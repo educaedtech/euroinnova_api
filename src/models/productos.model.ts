@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import {belongsTo, Entity, model, property} from '@loopback/repository';
 import {Divisas, Idiomas, Metodologias, Modalidades, PlataformasOnline, UnidadesTiempo} from '.';
 
@@ -502,7 +503,6 @@ export class Productos extends Entity {
   )
   divisaId?: number;
 
-  // Define well-known properties here
 
   // Indexer property to allow additional data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -513,8 +513,9 @@ export class Productos extends Entity {
   }
 }
 
-export interface ProductosRelations {
-  // describe navigational properties here
-}
+
+export type ProductosRelations = Productos & {
+  institucionesEducativasIds?: string[];
+};
 
 export type ProductosWithRelations = Productos & ProductosRelations;

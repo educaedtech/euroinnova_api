@@ -1,5 +1,5 @@
-import {Entity, model, property, belongsTo} from '@loopback/repository';
-import {PlataformasOnline,Areas} from '.';
+/* eslint-disable @typescript-eslint/naming-convention */
+import {Entity, model, property} from '@loopback/repository';
 
 @model({
   settings: {
@@ -10,13 +10,13 @@ import {PlataformasOnline,Areas} from '.';
         name: 'eduseoFacultadesEduseoPlataformasOnlineIdFkRel',
         entity: 'PlataformasOnline',
         entityKey: 'id',
-        foreignKey: 'plataformaDefectoId'
+        foreignKey: 'plataforma_defecto_id'
       },
       facultadesIbfk_1Rel: {
         name: 'facultadesIbfk_1Rel',
         entity: 'Areas',
         entityKey: 'id',
-        foreignKey: 'areaId'
+        foreignKey: 'area_id'
       }
     }
   }
@@ -62,11 +62,15 @@ export class Facultades extends Entity {
   })
   activo: number;
 
-  @belongsTo(() => Areas)
-  areaId?: number;
+  // @belongsTo(() => Areas, {
+  //   keyFrom: 'areaId',    // nombre de la propiedad en el modelo
+  //   name: 'area_id',      // nombre de la columna en la BD
+  //   keyTo: 'id'           // columna a la que referencia en la tabla Areas
+  // })
+  // areaId?: number;
 
-  @belongsTo(() => PlataformasOnline)
-  plataformaDefectoId?: number;
+  // @belongsTo(() => PlataformasOnline, {name: 'plataforma_defecto_id'})
+  // plataformaDefectoId?: number;
 
   // Define well-known properties here
 

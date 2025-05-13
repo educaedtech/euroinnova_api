@@ -1,5 +1,4 @@
-import {Entity, model, property, belongsTo} from '@loopback/repository';
-import {InstitucionesEducativasTipos,Empresas} from '.';
+import {Entity, model, property} from '@loopback/repository';
 
 @model({
   settings: {
@@ -10,13 +9,13 @@ import {InstitucionesEducativasTipos,Empresas} from '.';
         name: 'cativasTiposIdFkRel',
         entity: 'InstitucionesEducativasTipos',
         entityKey: 'id',
-        foreignKey: 'tipoId'
+        foreignKey: 'tipo_id'
       },
       institucionesEducativasEmpresasIdFkRel: {
         name: 'institucionesEducativasEmpresasIdFkRel',
         entity: 'Empresas',
         entityKey: 'id',
-        foreignKey: 'empresaId'
+        foreignKey: 'empresa_id'
       }
     }
   }
@@ -72,11 +71,15 @@ export class InstitucionesEducativas extends Entity {
   })
   interna?: number;
 
-  @belongsTo(() => InstitucionesEducativasTipos)
-  tipoId?: number;
+  // @belongsTo(() => InstitucionesEducativasTipos, {
+  //   keyFrom: 'tipo_id',    // nombre de la propiedad en el modelo
+  //   name: 'tipo_id',      // nombre de la columna en la BD
+  //   keyTo: 'id'           // columna a la que referencia en la tabla Areas
+  // })
+  // tipoId?: number;
 
-  @belongsTo(() => Empresas)
-  empresaId?: number;
+  // @belongsTo(() => Empresas)
+  // empresaId?: number;
 
   // Define well-known properties here
 

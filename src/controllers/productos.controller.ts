@@ -4,12 +4,16 @@ import {
   repository
 } from '@loopback/repository';
 import {
+  get,
+  getModelSchemaRef,
   param,
-  post
+  post,
+  response
 } from '@loopback/rest';
-import {Productos} from '../models';
+import {Productos, ProductosWithRelations} from '../models';
 import {ProductosRepository} from '../repositories';
 import {Metafield, ProductData, ShopifyService} from '../services/shopify.service';
+
 
 export class ProductosController {
   constructor(
@@ -19,7 +23,10 @@ export class ProductosController {
     public shopifyService: ShopifyService,
   ) { }
 
-  /*
+
+  // Define el esquema extendido manualmente
+
+
   @get('/productos/{id}')
   @response(200, {
     description: 'Productos model instance',
@@ -31,9 +38,12 @@ export class ProductosController {
   })
   async findById(
     @param.path.number('id') id: number
-  ): Promise<Productos> {
-    return this.productosRepository.findById(id);
+  ): Promise<ProductosWithRelations> {
+    const d = await this.productosRepository.findByIdMine(id);
+    return d;
   }
+
+  /*
 
   @post('/productos')
   @response(200, {
@@ -157,7 +167,9 @@ export class ProductosController {
     @param.path.number('id') id: number,
   ): Promise<object> {
     // 1. Obtener el producto de tu base de datos
-    const producto = await this.productosRepository.findById(id);
+    const producto = await this.productosRepository.findByIdMine(id);
+
+    console.log('Producto', producto)
 
     // 2. Transformar a formato Shopify
     const shopifyProduct = this.mapToShopifyFormat(producto);
@@ -208,6 +220,12 @@ export class ProductosController {
    */
   private getShopifyMetafields(producto: Productos): Metafield[] {
     return [
+      {
+        namespace: 'custom',
+        key: 'instituciones_educativas_en_producto',
+        value: JSON.stringify(producto.institucionesEducativasIds),
+        type: 'list.metaobject_reference'
+      },
       {
         namespace: 'custom',
         key: 'para_que_te_prepara',
