@@ -8,11 +8,11 @@ const {MYSQL_HOST,
   MYSQL_PASS,
   MYSQL_DB}
   = process.env;
-console.log('ENV', MYSQL_HOST,
-  MYSQL_PORT,
-  MYSQL_USER,
-  MYSQL_PASS,
-  MYSQL_DB);
+// console.log('ENV', MYSQL_HOST,
+//   MYSQL_PORT,
+//   MYSQL_USER,
+//   MYSQL_PASS,
+//   MYSQL_DB);
 const config = {
   name: 'euroProductos',
   connector: 'mysql',
