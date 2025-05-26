@@ -1,5 +1,5 @@
-import {Entity, model, property, belongsTo} from '@loopback/repository';
-import {NivelesEducativosCategorias} from '.';
+/* eslint-disable @typescript-eslint/naming-convention */
+import {Entity, model, property} from '@loopback/repository';
 
 @model({
   settings: {
@@ -10,7 +10,7 @@ import {NivelesEducativosCategorias} from '.';
         name: 'nivelesEducativosIbfk_1Rel',
         entity: 'NivelesEducativosCategorias',
         entityKey: 'id',
-        foreignKey: 'categoriaId'
+        foreignKey: 'categoria_id'
       }
     }
   }
@@ -56,8 +56,8 @@ export class NivelesEducativos extends Entity {
   })
   activo: number;
 
-  @belongsTo(() => NivelesEducativosCategorias)
-  categoriaId?: number;
+  // @belongsTo(() => NivelesEducativosCategorias)
+  // categoriaId?: number;
 
   // Define well-known properties here
 

@@ -1,5 +1,4 @@
-import {Entity, model, property, belongsTo} from '@loopback/repository';
-import {Facultades} from '.';
+import {Entity, model, property} from '@loopback/repository';
 
 @model({
   settings: {
@@ -10,7 +9,7 @@ import {Facultades} from '.';
         name: 'escuelasIbfk_1Rel',
         entity: 'Facultades',
         entityKey: 'id',
-        foreignKey: 'facultadId'
+        foreignKey: 'facultad_id'
       }
     }
   }
@@ -57,8 +56,8 @@ export class Escuelas extends Entity {
   })
   activo: number;
 
-  @belongsTo(() => Facultades)
-  facultadId?: number;
+  // @belongsTo(() => Facultades)
+  // facultadId?: number;
 
   // Define well-known properties here
 

@@ -3,7 +3,7 @@
 import {inject, injectable} from '@loopback/core';
 import {HttpErrors} from '@loopback/rest';
 import fetch from 'node-fetch';
-import {FacultadesRepository, InstitucionesEducativasRepository} from '../repositories';
+import {AreasRepository, CreditosProductosRepository, EscuelasRepository, FacultadesRepository, IdiomasRepository, InstitucionesEducativasRepository, NivelesEducativosRepository} from '../repositories';
 
 // Interfaces para los tipos
 interface ShopifyConfig {
@@ -38,7 +38,8 @@ export interface ProductData {
   handle?: string;
   seo?: {
     description?: string;
-  }
+  },
+  syncro_data?: {url: string, idShopi: string};
 }
 
 export interface CreditsInterface {
@@ -72,10 +73,30 @@ export interface FacultadesInterface {
   logo?: string;
 }
 
+export interface EscuelasInterface {
+  id_escuela: number;
+  nombre: string;
+  logo?: string;
+}
+
 export interface InstitucionesEducativasInterface {
   id_institucion_educativa: number;
   nombre: string;
   logo?: string;
+}
+
+export interface NivelesEducativosInterface {
+  id_nivel_educativo: number;
+  nombre: string;
+  logo?: string;
+  shopify_id?: string;
+}
+
+export interface IdiomasInterface {
+  id_idioma: number;
+  idioma: string;
+  prefijo_idioma?: string,
+  shopify_id?: string;
 }
 @injectable({tags: {key: 'services.ShopifyService'}})
 export class ShopifyService {
@@ -93,7 +114,29 @@ export class ShopifyService {
     imagen?: object;
   }> {
     try {
-      console.log('Creating/Updating Shopify product:', product);
+
+      const channelsQuery = `{
+            publications(first: 10) {
+              edges {
+                node {
+                  id
+                  name
+                }
+              }
+            }
+          }`;
+
+      const channelsResponse = await this.makeShopifyRequest(channelsQuery, {});
+
+      const publications = channelsResponse.data.publications.edges.map((edge: {node: {id: any;};}) => ({
+        "publicationId": edge.node.id, // ID del canal
+        "publishDate": new Date().toISOString()// Opcional
+      }))
+
+      // console.log(publications);
+
+
+      // console.log('Creating/Updating Shopify product:', product);
 
       // buscamos el producto en shopify para determinar si ya existe via SKU
       const searchQuery = `query GetProductBySku {
@@ -133,6 +176,7 @@ export class ShopifyService {
         productOptions: [],
         variants: [],
         seo: product.seo,
+        // productPublications: publications,
         metafields: product.metafields ? product.metafields.filter(m => m.value !== '').map(meta => {
           let processedValue = meta.value;
 
@@ -200,8 +244,14 @@ export class ShopifyService {
 
       //si tiene imagen subirla shopify y asignarsela al producto
       let imgWeb = undefined;
+      let nDataImg = undefined;
       if (product.imagenWeb /*&& !gid*/) {
-        imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id);
+        imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id, product.syncro_data);
+        console.log(imgWeb);
+        if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
+          nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
+        }
+
       }
 
       // 2. Actualizar variante con SKU y precio
@@ -231,22 +281,7 @@ export class ShopifyService {
 
       await this.makeShopifyRequest(updateVariantQuery, {});
 
-      // // 3. Activar ubicaciones de inventario si existen
-      // if (product.locations_data?.length > 0) {
-      //   await this.activateInventoryLocations(
-      //     variant.inventoryItem.id,
-      //     product.locations_data,
-      //   );
-      //   await this.adjustInventoryQuantities(
-      //     variant.inventoryItem.id,
-      //     product.locations_data,
-      //   );
-      // }
-
-      // // 4. Actualizar metadatos si es necesario
-      // if (product.metafields) {
-      //   await this.addProductMetafields(newProduct.id, product.metafields);
-      // }
+      await this.publishProd(gid, publications);
 
       return {
         sku: product.sku,
@@ -254,7 +289,7 @@ export class ShopifyService {
         shopifyId: newProduct.id,
         variantId: variant.id,
         inventoryItemId: variant.inventoryItem.id,
-        imagen: imgWeb,
+        imagen: nDataImg
       };
     } catch (error) {
       console.error('Error in createShopifyProduct:', error);
@@ -375,8 +410,11 @@ export class ShopifyService {
     return response.json();
   }
 
-  private async uploadImageToShopify(imageUrl: string, productId: string): Promise<any> {
+  private async uploadImageToShopify(imageUrl: string, productId: string, syncro_data?: {url: string, idShopi: string}): Promise<any> {
 
+    if (syncro_data?.url === imageUrl) {
+      return {msg: "upload image don'y needed"}
+    }
     const mutation = `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
           media {
@@ -402,8 +440,8 @@ export class ShopifyService {
         originalSource: `${imageUrl}`
       }]
     };
-
-    return this.makeShopifyRequest(mutation, variables);
+    const uplData = await this.makeShopifyRequest(mutation, variables);
+    return uplData;
   }
 
 
@@ -427,7 +465,7 @@ export class ShopifyService {
 
 
   //para la seccion de creditos
-  async syncronizeCredits(creditos: CreditsInterface[]): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeCredits(creditos: CreditsInterface[], repo: CreditosProductosRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -458,6 +496,8 @@ export class ShopifyService {
       // 3. Procesar cada crédito
       for (const credit of creditos) {
         try {
+          const idInstDB = credit.id;
+
           const fields = [
             {key: "id_credito", value: `${credit.id}`},
             {key: "titulo", value: `${credit.nombre}`},
@@ -466,8 +506,9 @@ export class ShopifyService {
           ];
 
           const existing = existingMetaobjectsMap.get(credit.id.toString());
-
+          let shopifyIdUpdate = null;
           if (existing) {
+            shopifyIdUpdate = existing.id;
             // 4. Verificar si realmente necesita actualización
             const needsUpdate = fields.some(newField => {
               const existingField = existing.fields.find((f: any) => f.key === newField.key);
@@ -476,11 +517,11 @@ export class ShopifyService {
 
             if (!needsUpdate) {
               results.skipped++;
-              continue;
             }
+            else {
 
-            // 5. Actualizar si hay cambios
-            const updateMutation = `
+              // 5. Actualizar si hay cambios
+              const updateMutation = `
                 mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
                   metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
                     metaobject {
@@ -495,16 +536,17 @@ export class ShopifyService {
                 }
               `;
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
-              id: existing.id,
-              fields: fields
-            });
+              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                id: existing.id,
+                fields: fields
+              });
 
-            if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
-              throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+              if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
+                throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+              }
+
+              results.updated++;
             }
-
-            results.updated++;
           } else {
             // 6. Crear nuevo si no existe
             const createMutation = `
@@ -533,8 +575,11 @@ export class ShopifyService {
               throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
             }
 
+            shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
             results.created++;
           }
+
+          await repo.execute(`UPDATE creditos_productos SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -555,8 +600,160 @@ export class ShopifyService {
     return results;
   }
 
+  //para la seccion de escuelas
+  async syncronizeEscuelas(areasOnDB: EscuelasInterface[], repo: EscuelasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+    const results: SyncResults = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    try {
+      // 1. Obtener TODOS los metaobjects existentes de una sola vez
+      const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
+        type: "escuelas"
+      });
+
+      // console.log('exist', existingResponse.data.metaobjects.edges[0]);
+
+      // 2. Mapear los existentes por su id_credito para búsqueda rápida
+      const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
+
+      existingResponse?.data?.metaobjects?.edges?.forEach((edge: any) => {
+        const idField = edge.node.fields.find((f: any) => f.key === "id_escuela");
+        if (idField) {
+          existingMetaobjectsMap.set(idField.value, {
+            id: edge.node.id,
+            fields: edge.node.fields
+          });
+        }
+      });
+
+      // console.log('existingResponse', existingMetaobjectsMap)
+
+      // 3. Procesar cada area
+      for (const escuela of areasOnDB) {
+        try {
+
+          const idInstDB = escuela.id_escuela;
+
+          const fields = [
+            {key: "id_escuela", value: `${escuela.id_escuela}`},
+            {key: "nombre", value: `${escuela.nombre}`},
+            {key: "logo", value: `${escuela.logo}`}
+          ];
+
+          const existing = existingMetaobjectsMap.get(escuela.id_escuela.toString());
+
+          let shopifyIdUpdate = null;
+          if (existing) {
+
+            shopifyIdUpdate = existing.id;
+            // 4. Verificar si realmente necesita actualización
+            const needsUpdate = fields.some(newField => {
+              const existingField = existing.fields.find((f: any) => f.key === newField.key);
+              return !existingField || existingField.value !== newField.value;
+            });
+
+            if (!needsUpdate) {
+              results.skipped++;
+            }
+            else {
+
+              // 5. Actualizar si hay cambios
+              const updateMutation = `
+                mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                    metaobject {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                id: existing.id,
+                fields: fields
+              });
+
+              if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
+                throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+              }
+
+              results.updated++;
+            }
+
+          } else {
+            // 6. Crear nueva area si no existe
+            const createMutation = `
+                mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
+                  metaobjectCreate(metaobject: $metaobject) {
+                    metaobject {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+            const createResponse = await this.makeShopifyRequest(createMutation, {
+              metaobject: {
+                type: "escuelas",
+                fields: fields
+              }
+            });
+
+            if (createResponse?.data?.metaobjectCreate?.userErrors?.length > 0) {
+              throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
+            }
+
+            shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
+
+            results.created++;
+          }
+
+          await repo.execute(`UPDATE escuelas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+
+          // Pequeña pausa para evitar rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.log('EROR', error)
+          results.errors.push({
+            creditId: escuela.id_escuela,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+
+
+
+
+      }
+
+
+
+
+    } catch (error) {
+      results.errors.push({
+        creditId: -1,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    return results;
+  }
+
   //para la seccion de creditos
-  async syncronizeAreas(areasOnDB: AreasInterface[]): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeAreas(areasOnDB: AreasInterface[], repo: AreasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -590,6 +787,9 @@ export class ShopifyService {
       // 3. Procesar cada area
       for (const area of areasOnDB) {
         try {
+
+          const idInstDB = area.id_area;
+
           const fields = [
             {key: "id_area", value: `${area.id_area}`},
             {key: "titulo", value: `${area.titulo}`}
@@ -597,7 +797,10 @@ export class ShopifyService {
 
           const existing = existingMetaobjectsMap.get(area.id_area.toString());
 
+          let shopifyIdUpdate = null;
           if (existing) {
+
+            shopifyIdUpdate = existing.id;
             // 4. Verificar si realmente necesita actualización
             const needsUpdate = fields.some(newField => {
               const existingField = existing.fields.find((f: any) => f.key === newField.key);
@@ -606,11 +809,11 @@ export class ShopifyService {
 
             if (!needsUpdate) {
               results.skipped++;
-              continue;
             }
+            else {
 
-            // 5. Actualizar si hay cambios
-            const updateMutation = `
+              // 5. Actualizar si hay cambios
+              const updateMutation = `
                 mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
                   metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
                     metaobject {
@@ -625,17 +828,20 @@ export class ShopifyService {
                 }
               `;
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
-              id: existing.id,
-              fields: fields
-            });
+              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                id: existing.id,
+                fields: fields
+              });
 
-            if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
-              throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+              if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
+                throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+              }
+
+              results.updated++;
             }
 
-            results.updated++;
           } else {
+            console.log('No Entro');
             // 6. Crear nueva area si no existe
             const createMutation = `
                 mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
@@ -663,18 +869,30 @@ export class ShopifyService {
               throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
             }
 
+            shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
+
             results.created++;
           }
+
+          await repo.execute(`UPDATE areas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
+          console.log('EROR', error)
           results.errors.push({
             creditId: area.id_area,
             error: error instanceof Error ? error.message : String(error)
           });
         }
+
+
+
+
       }
+
+
+
 
     } catch (error) {
       results.errors.push({
@@ -971,4 +1189,359 @@ export class ShopifyService {
 
     return results;
   }
+
+
+
+
+  //para la seccion de NIveles Educativos
+  async syncronizeNivelesEducativos(nivelesEduData: NivelesEducativosInterface[], repo: NivelesEducativosRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+    const results: SyncResults = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    try {
+      // 1. Obtener TODOS los metaobjects existentes de una sola vez
+      const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
+        type: "nivel_educativo" //rectificar cuando tenga conexion
+      });
+
+      // 2. Mapear los existentes por su id_institucion_educativa para búsqueda rápida
+      const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
+
+      existingResponse?.data?.metaobjects?.edges?.forEach((edge: any) => {
+        const idField = edge.node.fields.find((f: any) => f.key === "id_nivel_educativo");
+        if (idField) {
+          existingMetaobjectsMap.set(idField.value, {
+            id: edge.node.id,
+            fields: edge.node.fields
+          });
+        }
+      });
+
+      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+
+      // 3. Procesar cada institucion
+      for (const fac of nivelesEduData) {
+        try {
+
+          const idInstDB = fac.id_nivel_educativo;
+
+          const fields = [
+            {key: "id_nivel_educativo", value: `${fac.id_nivel_educativo}`},
+            {key: "titulo", value: `${fac.nombre}`},
+            {key: "logo", value: fac.logo ?? ""}
+          ];
+
+
+          const existing = existingMetaobjectsMap.get(fac.id_nivel_educativo.toString());
+          console.log('Existing', existing)
+          let shopifyIdUpdate = null; //est para actualizar el valor del id shopify en la tabla de instituciones ediucativas
+          if (existing) {
+            shopifyIdUpdate = existing.id;
+            // 4. Verificar si realmente necesita actualización
+            const needsUpdate = fields.some(newField => {
+              const existingField = existing.fields.find((f: any) => f.key === newField.key);
+              return !existingField || existingField.value !== newField.value;
+            });
+
+            if (!needsUpdate) {
+              results.skipped++;
+              continue;
+            }
+
+            // 5. Actualizar si hay cambios
+            const updateMutation = `
+                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
+                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                       metaobject {
+                         id
+                       }
+                       userErrors {
+                         field
+                         message
+                         code
+                       }
+                     }
+                   }
+                 `;
+
+            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+              id: existing.id,
+              fields: fields
+            });
+
+            if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
+              throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+            }
+
+            results.updated++;
+          } else {
+            // 6. Crear nuevo si no existe
+            const createMutation = `
+                   mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
+                     metaobjectCreate(metaobject: $metaobject) {
+                       metaobject {
+                         id
+                       }
+                       userErrors {
+                         field
+                         message
+                         code
+                       }
+                     }
+                   }
+                 `;
+
+            const createResponse = await this.makeShopifyRequest(createMutation, {
+              metaobject: {
+                type: "nivel_educativo",
+                fields: fields
+              }
+            });
+
+            if (createResponse?.data?.metaobjectCreate?.userErrors?.length > 0) {
+              throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
+            }
+            shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
+
+
+            results.created++;
+          }
+
+          await repo.execute(`UPDATE niveles_educativos SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+
+          // Pequeña pausa para evitar rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          results.errors.push({
+            creditId: fac.id_nivel_educativo,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+
+
+    } catch (error) {
+      results.errors.push({
+        creditId: -1,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    return results;
+  }
+
+
+  //para la seccion de Idiomas
+  async syncronizeIdiomas(idioomasEduData: IdiomasInterface[], repo: IdiomasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+    const results: SyncResults = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    try {
+      // 1. Obtener TODOS los metaobjects existentes de una sola vez
+      const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
+        type: "idiomas_curso"
+      });
+
+      // 2. Mapear los existentes por su id_institucion_educativa para búsqueda rápida
+      const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
+
+      existingResponse?.data?.metaobjects?.edges?.forEach((edge: any) => {
+        const idField = edge.node.fields.find((f: any) => f.key === "id_idioma");
+        if (idField) {
+          existingMetaobjectsMap.set(idField.value, {
+            id: edge.node.id,
+            fields: edge.node.fields
+          });
+        }
+      });
+
+      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+
+      // 3. Procesar cada institucion
+      for (const fac of idioomasEduData) {
+        try {
+
+          const idInstDB = fac.id_idioma;
+
+          const fields = [
+            {key: "id_idioma", value: `${fac.id_idioma}`},
+            {key: "idioma", value: `${fac.idioma}`},
+            {key: "prefijo_idioma", value: fac.prefijo_idioma ?? ""}
+          ];
+
+
+          const existing = existingMetaobjectsMap.get(fac.id_idioma.toString());
+          console.log('Existing', existing)
+          let shopifyIdUpdate = null; //est para actualizar el valor del id shopify en la tabla de instituciones ediucativas
+          if (existing) {
+            shopifyIdUpdate = existing.id;
+            // 4. Verificar si realmente necesita actualización
+            const needsUpdate = fields.some(newField => {
+              const existingField = existing.fields.find((f: any) => f.key === newField.key);
+              return !existingField || existingField.value !== newField.value;
+            });
+
+            if (!needsUpdate) {
+              results.skipped++;
+              continue;
+            }
+
+            // 5. Actualizar si hay cambios
+            const updateMutation = `
+                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
+                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                       metaobject {
+                         id
+                       }
+                       userErrors {
+                         field
+                         message
+                         code
+                       }
+                     }
+                   }
+                 `;
+
+            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+              id: existing.id,
+              fields: fields
+            });
+
+            if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
+              throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
+            }
+
+            results.updated++;
+          } else {
+            // 6. Crear nuevo si no existe
+            const createMutation = `
+                   mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
+                     metaobjectCreate(metaobject: $metaobject) {
+                       metaobject {
+                         id
+                       }
+                       userErrors {
+                         field
+                         message
+                         code
+                       }
+                     }
+                   }
+                 `;
+
+            const createResponse = await this.makeShopifyRequest(createMutation, {
+              metaobject: {
+                type: "idiomas_del_curso",
+                fields: fields
+              }
+            });
+
+            if (createResponse?.data?.metaobjectCreate?.userErrors?.length > 0) {
+              throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
+            }
+            shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
+
+
+            results.created++;
+          }
+
+          await repo.execute(`UPDATE idiomas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+
+          // Pequeña pausa para evitar rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          results.errors.push({
+            creditId: fac.id_idioma,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+
+
+    } catch (error) {
+      results.errors.push({
+        creditId: -1,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    return results;
+  }
+
+
+  // publicar producto
+  async publishProd(idProd: any, channels: any): Promise<{success: boolean; errors: any[]}> {
+    const results: any = {
+      success: false,
+      errors: []
+    };
+    try {
+
+      const query = `mutation productPublish($input: ProductPublishInput!) {
+                productPublish(input: $input) {
+                  product {
+                    id
+                  }
+                  productPublications {
+                    channel{
+                        name
+                    }
+                    isPublished
+                  }
+                  shop {
+                    name
+                  }
+                  userErrors {
+                    field
+                    message
+                  }
+                }
+              }`;
+      const variables = {
+        "input": {
+          "id": idProd,
+          "productPublications": channels
+        }
+      };
+
+
+      const createResponse = await this.makeShopifyRequest(query, variables);
+
+      if (
+        createResponse?.errors ||
+        createResponse?.data.productPublish.userErrors.length > 0
+      ) {
+        const errors =
+          createResponse?.errors || createResponse?.data.productPublish.userErrors;
+
+        results.errors = errors;
+        throw new Error(errors.map((e: {message: unknown;}) => e.message).join(', '));
+      } else {
+        results.success = true;
+      }
+
+      return results;
+
+    } catch (error) {
+      results.errors.push({
+        creditId: idProd,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      return results;
+    }
+
+
+  }
+
 }

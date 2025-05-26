@@ -57,7 +57,7 @@ export class CreditosController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeCredits(creditosData);
+      const syncResult = await this.shopifyService.syncronizeCredits(creditosData, this.creditosProductosRepository);
 
       // 4. Logging más informativo
       console.log('Sincronización completada:', syncResult);

@@ -454,6 +454,16 @@ export class Productos extends Entity {
   })
   practicas?: string;
 
+  @property({
+    type: 'object',
+    required: false, // opcional
+    jsonSchema: {
+      url: 'string',
+      idShopi: 'string'
+    },
+  })
+  syncro_data?: object;
+
 
   // Relación con Idiomas
   @belongsTo(

@@ -169,30 +169,33 @@ export class ProductosController {
     // 1. Obtener el producto de tu base de datos
     const producto = await this.productosRepository.findByIdMine(id);
 
-    console.log('Producto', producto)
+
 
     // 2. Transformar a formato Shopify
-    const shopifyProduct = this.mapToShopifyFormat(producto);
-
+    const shopifyProduct = this.mapToShopifyFormat(producto, id);
+    // console.log('Producto', shopifyProduct)
     // 3. Sincronizar con Shopify
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
 
-    // // 4. Actualizar el producto con los IDs de Shopify si es necesario
-    // if (result.success) {
-    //   await this.productosRepository.updateById(id, {
-    //     shopifyId: result.shopifyId,
-    //     shopifyVariantId: result.variantId,
-    //     updatedAt: new Date(),
-    //   });
-    // }
+    //  4. Actualizar el producto con el ID de Shopify
+    let error = {};
+    try {
+      const updSyncroData = result.imagen;
+      await this.productosRepository.execute(`UPDATE productos SET shopify_id=?, syncro_data=? WHERE unidad_id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), id]);
+    } catch (errorMsg) {
+      error = errorMsg;
+      console.log('Error', error)
 
-    return result;
+    }
+
+
+    return {...result, error};
   }
 
   /**
    * Mapea el modelo Productos al formato esperado por Shopify
    */
-  private mapToShopifyFormat(producto: Productos): ProductData {
+  private mapToShopifyFormat(producto: Productos, id: number): ProductData {
     return {
       title: producto.titulo ?? '',
       description: producto.descripcion,
@@ -205,96 +208,238 @@ export class ProductosController {
       // inventory_management: 'shopify',
       // }],
       locations_data: [],
-      metafields: this.getShopifyMetafields(producto),
+      metafields: this.getShopifyMetafields(producto, id),
       imagenWeb: producto.imagenWeb ?? undefined,
       tituloComercial: producto.tituloComercial ?? undefined,
       handle: producto.url,
       seo: producto.descripcionSeo ? {
         description: producto.descripcionSeo ?? undefined
-      } : undefined
+      } : undefined,
+      // syncro_data: {url: producto?.syncro_data.url ?? '', idShopi: producto?.syncro_data.idShopi ?? ''}
     };
   }
 
   /**
    * Genera los metacampos específicos para Shopify
    */
-  private getShopifyMetafields(producto: Productos): Metafield[] {
-    return [
-      {
-        namespace: 'custom',
-        key: 'instituciones_educativas_en_producto',
-        value: JSON.stringify(producto.institucionesEducativasIds),
-        type: 'list.metaobject_reference'
-      },
-      {
-        namespace: 'custom',
-        key: 'para_que_te_prepara',
-        value: producto.paraQueTePrepara ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'a_quien_va_dirigido',
-        value: producto.aQuienVaDirigido ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'competencias_academicas',
-        value: producto.competenciasAcademicas ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'objetivos',
-        value: producto.objetivos ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'salidas_profesionales',
-        value: producto.salidasLaborales ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'competencias_academicas',
-        value: producto.competenciasAcademicas ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'requisitos',
-        value: producto.requisitos ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'video_name',
-        value: producto.urlReferenciaVideo ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'caracter_oficial_value',
-        value: producto.caracterOficial ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'titulacion',
-        value: producto.titulacion ?? '',
-        type: 'single_line_text_field'
-      },
-      {
-        namespace: 'custom',
-        key: 'convalidaciones',
-        value: producto.convalidaciones ?? '',
-        type: 'single_line_text_field'
-      },
+  private getShopifyMetafields(producto: Productos, id: number): Metafield[] {
 
+    try {
 
-    ];
+      const idiomas = [...new Set([producto.extraData.idioma_shopify, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
+      console.log(idiomas)
+      return [
+        {
+          namespace: 'custom',
+          key: 'escuela',
+          value: producto.extraData.escuela_shopify ?? "",
+          type: 'metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'creditos_universitarios',
+          value: producto.extraData.creditos_productos_shopify ? JSON.stringify(producto.extraData.creditos_productos_shopify) : "",
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'creditos',
+          value: producto.extraData.creditos ? producto.extraData.creditos.toString() : "",
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'nivel_educativo',
+          value: producto.extraData.nivel_educativo_shopify ? JSON.stringify([producto.extraData.nivel_educativo_shopify]) : "",
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'area',
+          value: producto.extraData.area_shopify ? JSON.stringify([producto.extraData.area_shopify]) : "",
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'facultad',
+          value: producto.extraData.facultad_shopify ? JSON.stringify([producto.extraData.facultad_shopify]) : "",
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'idiomas_curso',
+          value: producto.extraData.idioma_shopify ? JSON.stringify(idiomas) : "",
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'nombre_idioma_producto',
+          value: producto.extraData?.idioma_nombre ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'instituciones_educativas_en_producto',
+          value: JSON.stringify(producto.institucionesEducativasIds),
+          type: 'list.metaobject_reference'
+        },
+        {
+          namespace: 'custom',
+          key: 'para_que_te_prepara',
+          value: producto.paraQueTePrepara ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'descripcion_metodologia',
+          value: producto.descripcionMetodologia ?? '',
+          type: 'multi_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'temario',
+          value: producto.temario ?? '',
+          type: 'multi_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'titulo_temario',
+          value: producto.temarioTitulo ?? '',
+          type: 'multi_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'certificado_digital',
+          value: producto.certificadoDigital ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'becas_financiacion',
+          value: producto.becasFinanciacion ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'baremable_oposiciones',
+          value: producto.baremableOposiciones ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'a_quien_va_dirigido',
+          value: producto.aQuienVaDirigido ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'convocatoria',
+          value: producto.convocatoria ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'competencias_academicas',
+          value: producto.competenciasAcademicas ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'objetivos',
+          value: producto.objetivos ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'salidas_profesionales',
+          value: producto.salidasLaborales ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'competencias_academicas',
+          value: producto.competenciasAcademicas ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'requisitos',
+          value: producto.requisitos ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'url_video',
+          value: producto.urlReferenciaVideo?.toString() ?? '',
+          type: 'url'
+        },
+        {
+          namespace: 'custom',
+          key: 'caracter_oficial_value',
+          value: producto.caracterOficial ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'titulacion',
+          value: producto.titulacion ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'convalidaciones',
+          value: producto.convalidaciones ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'id_curso',
+          value: id?.toString() ?? '',
+          type: 'number_integer'
+        },
+        {
+          namespace: 'custom',
+          key: 'duracion',
+          value: producto.duracion?.toString() ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'unidad_tiempo',
+          value: producto.extraData.unidad_tiempo ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'modalidad',
+          value: producto.extraData.modalidad ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'diplomas_certificados',
+          value: producto.extraData.url_imagenes_diplomas ? JSON.stringify(producto.extraData.url_imagenes_diplomas) : '',
+          type: 'list.url'
+        },
+        {
+          namespace: 'custom',
+          key: 'logos_certificados',
+          value: producto.extraData.url_imagenes_logos ? JSON.stringify(producto.extraData.url_imagenes_logos) : '',
+          type: 'list.url'
+        },
+        {
+          namespace: 'custom',
+          key: 'productos_relacionados_por_idiomas',
+          value: producto.extraData.productos_relacionados_idioma ? JSON.stringify(producto.extraData.productos_relacionados_idioma) : '',
+          type: 'list.product_reference'
+        },
+      ];
+
+    } catch (error) {
+      console.log('ERROR DETECTED ON METAFIELDS ', error);
+      return [];
+    }
+
   }
 
 

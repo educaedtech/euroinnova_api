@@ -34,7 +34,7 @@ export class AreasController {
 
   @get('/areas/sync-to-shopify')
   @response(200, {
-    description: 'Sincronize Array of CreditosProductos',
+    description: 'Sincronize Array of Areas',
     content: {
       'application/json': {
         schema: {
@@ -59,7 +59,7 @@ export class AreasController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeAreas(normalizeData);
+      const syncResult = await this.shopifyService.syncronizeAreas(normalizeData, this.areasRepository);
 
       // // 4. Logging más informativo
       // console.log('Sincronización completada:', syncResult);
