@@ -1,15 +1,27 @@
-import { inject, lifeCycleObserver, LifeCycleObserver } from '@loopback/core';
-import { juggler } from '@loopback/repository';
+import {inject, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
+import {juggler} from '@loopback/repository';
 
+
+const {MYSQL_HOST,
+  MYSQL_PORT,
+  MYSQL_USER,
+  MYSQL_PASS,
+  MYSQL_DB}
+  = process.env;
+console.log('ENV', MYSQL_HOST,
+  MYSQL_PORT,
+  MYSQL_USER,
+  MYSQL_PASS,
+  MYSQL_DB);
 const config = {
   name: 'euroProductos',
   connector: 'mysql',
-  url: 'mysql://ismael:Anaisabel*123@localhost:3306/productos',
-  host: 'localhost',
-  port: 3306,
-  user: 'ismael',
-  password: 'Anaisabel*123',
-  database: 'productos'
+  url: `mysql://${MYSQL_USER}:${MYSQL_PASS}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}`,
+  host: MYSQL_HOST,
+  port: MYSQL_PORT,
+  user: MYSQL_USER,
+  password: MYSQL_PASS,
+  database: MYSQL_DB
 };
 
 // Observe application's life cycle to disconnect the datasource when
@@ -23,7 +35,7 @@ export class EuroProductosDataSource extends juggler.DataSource
   static readonly defaultConfig = config;
 
   constructor(
-    @inject('datasources.config.euroProductos', { optional: true })
+    @inject('datasources.config.euroProductos', {optional: true})
     dsConfig: object = config,
   ) {
     super(dsConfig);
