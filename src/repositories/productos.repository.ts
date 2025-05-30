@@ -88,13 +88,22 @@ export class ProductosRepository extends DefaultCrudRepository<
               JOIN imagenes im ON ui.imagen_id = im.id AND im.tipo_id=2
               WHERE ui.unidad_id = p.unidad_id
           ) AS url_imagenes_diplomas,
-					(
-					SELECT NULLIF(JSON_ARRAYAGG(NULLIF(un.shopify_id, NULL)), JSON_ARRAY(NULL))
-              FROM unidades_unidades_relacionadas uur
-							JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
-							JOIN unidades un ON un.id=pd.unidad_id
-              WHERE uur.unidad_id = p.unidad_id AND uur.tipo_relacion_id=1
-					) as productos_relacionados_idioma,
+					(SELECT
+						NULLIF(
+							(
+								SELECT JSON_ARRAYAGG(shopify_id)
+								FROM (
+									SELECT un.shopify_id
+									FROM unidades_unidades_relacionadas uur
+									JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
+									JOIN unidades un ON un.id = pd.unidad_id
+									WHERE uur.unidad_id = p.unidad_id
+										AND uur.tipo_relacion_id = 1
+										AND un.shopify_id IS NOT NULL
+								) filtered
+							),
+							JSON_ARRAY(NULL)
+						) ) as productos_relacionados_idioma,
 					(
 							SELECT NULLIF(JSON_ARRAYAGG(NULLIF(tmp.shopify_id, NULL)), JSON_ARRAY(NULL))
 							FROM (
