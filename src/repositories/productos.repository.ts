@@ -133,9 +133,6 @@ export class ProductosRepository extends DefaultCrudRepository<
       LEFT JOIN escuelas es ON es.id = u.escuela_id
       WHERE p.unidad_id = ?;`;
 
-
-      /**'ESCUELAS',
-              es.nombre, */
       const extraData = await this.dataSource.execute(
         extraDataQuery,
         [producto.unidadId],
