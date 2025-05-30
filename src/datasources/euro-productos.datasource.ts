@@ -1,6 +1,11 @@
 import {inject, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
 import {juggler} from '@loopback/repository';
 
+// const MYSQL_HOST = "localhost";
+// const MYSQL_PORT = "3306";
+// const MYSQL_USER = "ismael";
+// const MYSQL_PASS = "Anaisabel*123";
+// const MYSQL_DB = "productos";
 
 const {MYSQL_HOST,
   MYSQL_PORT,
@@ -8,15 +13,11 @@ const {MYSQL_HOST,
   MYSQL_PASS,
   MYSQL_DB}
   = process.env;
-// console.log('ENV', MYSQL_HOST,
-//   MYSQL_PORT,
-//   MYSQL_USER,
-//   MYSQL_PASS,
-//   MYSQL_DB);
+
 const config = {
   name: 'euroProductos',
   connector: 'mysql',
-  url: `mysql://${MYSQL_USER}:${MYSQL_PASS}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}`,
+  // url: `mysql://${MYSQL_USER}:${MYSQL_PASS}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}`,
   host: MYSQL_HOST,
   port: MYSQL_PORT,
   user: MYSQL_USER,

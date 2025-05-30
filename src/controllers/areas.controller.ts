@@ -22,6 +22,7 @@ import {
 import {Areas} from '../models';
 import {AreasRepository} from '../repositories';
 import {AreasInterface, CreditsInterface, ShopifyService, SyncResults} from '../services/shopify.service';
+import {GeneralController} from './general.controller';
 
 export class AreasController {
   constructor(
@@ -29,6 +30,8 @@ export class AreasController {
     public areasRepository: AreasRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('controllers.GeneralController')
+    public generalController: GeneralController,
   ) { }
 
 
@@ -52,10 +55,16 @@ export class AreasController {
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const areasData = await this.areasRepository.find();// as any[];//CreditsInterface[];
       const normalizeData = areasData.map(area => ({id_area: area.id, titulo: area.nombre})) as AreasInterface[];
-      console.log('areasData', normalizeData)
+      const area2collections = areasData.map(ac => ac.nombre) as string[];
+      // console.log('areasData', normalizeData)
       // 2. Validar que hay datos antes de continuar
       if (!normalizeData || normalizeData.length === 0) {
         throw new Error('No se encontraron areas para sincronizar');
+      }
+
+      // creando Collecciones en caso de que no existan
+      for (const element of area2collections) {
+        await this.generalController.findOrCreateCollection(element);
       }
 
       // 3. Sincronizar con Shopify

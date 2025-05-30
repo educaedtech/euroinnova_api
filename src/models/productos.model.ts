@@ -63,7 +63,7 @@ export class Productos extends Entity {
     id: 1,
     mysql: {columnName: 'unidad_id', dataType: 'int', dataLength: null, dataPrecision: 10, dataScale: 0, nullable: 'N', generated: 1},
   })
-  unidadId?: Number;
+  unidadId: number;
 
   @property({
     type: 'string',
@@ -453,17 +453,6 @@ export class Productos extends Entity {
     mysql: {columnName: 'practicas', dataType: 'text', dataLength: 65535, dataPrecision: null, dataScale: null, nullable: 'Y', generated: false},
   })
   practicas?: string;
-
-  @property({
-    type: 'object',
-    required: false, // opcional
-    jsonSchema: {
-      url: 'string',
-      idShopi: 'string'
-    },
-  })
-  syncro_data?: object;
-
 
   // Relación con Idiomas
   @belongsTo(

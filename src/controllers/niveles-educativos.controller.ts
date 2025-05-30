@@ -22,6 +22,7 @@ import {
 import {NivelesEducativos} from '../models';
 import {NivelesEducativosRepository} from '../repositories';
 import {NivelesEducativosInterface, ShopifyService, SyncResults} from '../services/shopify.service';
+import {GeneralController} from './general.controller';
 
 export class NivelesEducativosController {
   constructor(
@@ -29,6 +30,8 @@ export class NivelesEducativosController {
     public nivelesEducativosRepository: NivelesEducativosRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('controllers.GeneralController')
+    public generalController: GeneralController,
   ) { }
 
 
@@ -53,7 +56,12 @@ export class NivelesEducativosController {
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.nivelesEducativosRepository.find();
       const nivEducData = data.map(f => ({id_nivel_educativo: f.id, nombre: f.nombre, logo: f.logo})) as NivelesEducativosInterface[];
-      // console.log(facultadesData)
+
+      // creando Collecciones en caso de que no existan
+      const niveles2collections = data.map(fc => fc.nombre) as string[];
+      for (const element of niveles2collections) {
+        await this.generalController.findOrCreateCollection(element);
+      }
 
       // 2. Validar que hay datos antes de continuar
       if (!nivEducData || nivEducData.length === 0) {
@@ -64,7 +72,7 @@ export class NivelesEducativosController {
       const syncResult = await this.shopifyService.syncronizeNivelesEducativos(nivEducData, this.nivelesEducativosRepository);
 
       // 4. Logging más informativo
-      console.log('Sincronización completada:', syncResult);
+      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {

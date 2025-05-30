@@ -62,7 +62,7 @@ export class IdiomasController {
       const syncResult = await this.shopifyService.syncronizeIdiomas(idiomaData, this.idiomasRepository);
 
       // 4. Logging más informativo
-      console.log('Sincronización completada:', syncResult);
+      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
@@ -14,6 +15,15 @@ import {Productos, ProductosWithRelations} from '../models';
 import {ProductosRepository} from '../repositories';
 import {Metafield, ProductData, ShopifyService} from '../services/shopify.service';
 
+// seccion para sincronizacion en lotes (jobs)
+import {requestBody} from '@loopback/rest';
+import {QueueService} from '../services/queue.service';
+
+//  interfaz para el request body
+interface SyncBatchRequest {
+  batchSize?: number;
+  productIds?: number[]; // Opcional: para sincronizar productos específicos
+}
 
 export class ProductosController {
   constructor(
@@ -23,8 +33,110 @@ export class ProductosController {
     public shopifyService: ShopifyService,
   ) { }
 
+  // endpoint para sincronizacion en lotes
+  @post('/productos/sync-batch-to-shopify', {
+    responses: {
+      '200': {
+        description: 'Inicia la sincronización masiva de productos con Shopify',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                totalProducts: {type: 'number'},
+                batchesCreated: {type: 'number'},
+                message: {type: 'string'},
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  async syncBatchToShopify(
+    @requestBody({
+      description: 'Opciones para la sincronización por lotes',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              batchSize: {type: 'number', default: 100},
+              productIds: {
+                type: 'array',
+                items: {type: 'number'},
+                nullable: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    options?: SyncBatchRequest,
+    @inject('services.QueueService')
+    queueService?: QueueService,
+  ): Promise<{
+    totalProducts: number;
+    batchesCreated: number;
+    message: string;
+  }> {
+    const batchSize = options?.batchSize ?? 100;
 
-  // Define el esquema extendido manualmente
+    // Obtener todos los productos o los específicos si se proporcionan IDs
+    const productos: Productos[] = [];
+
+    // console.log(options);
+
+    if (options?.productIds && options.productIds.length > 0) {
+
+      for (const prodId of options.productIds) {
+        try {
+          const product = await this.productosRepository.findByIdMine(prodId);
+          if (product)
+            productos.push(product);
+        } catch (error) {
+          console.log(`🔥 Omitiendo ID:${prodId}, ERROR: ${error.toString()}`)
+        }
+
+      }
+
+    } else {
+      console.log('desarrollar paginacion para el envio de colas y acceso a datos');
+      // productos = (await this.productosRepository.find()).slice(10);
+    }
+
+    // Transformar productos al formato de Shopify
+    const shopifyProducts: ProductData[] = productos.map(producto => {
+      return this.mapToShopifyFormat(producto, producto.unidadId)
+    }
+
+    );
+
+    // Procesar en lotes
+    const batches: ProductData[][] = [];
+    for (let i = 0; i < shopifyProducts.length; i += batchSize) {
+      batches.push(shopifyProducts.slice(i, i + batchSize));
+    }
+
+    // Añadir lotes a la cola
+    if (queueService) {
+      for (const batch of batches) {
+        await queueService.addProductBatchToSync(batch);
+      }
+
+    } else {
+      throw new Error('QueueService no está disponible');
+    }
+
+    return {
+      totalProducts: shopifyProducts.length,
+      batchesCreated: batches.length,
+      message: `Sincronización masiva iniciada. ${shopifyProducts.length} productos en ${batches.length} lotes de ${batchSize}.`,
+    };
+  }
+
+
 
 
   @get('/productos/{id}')
@@ -178,30 +290,55 @@ export class ProductosController {
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
 
     //  4. Actualizar el producto con el ID de Shopify
-    let error = {};
-    try {
-      const updSyncroData = result.imagen;
-      await this.productosRepository.execute(`UPDATE productos SET shopify_id=?, syncro_data=? WHERE unidad_id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), id]);
-    } catch (errorMsg) {
-      error = errorMsg;
-      console.log('Error', error)
 
-    }
+    const error = await this.updateUnidadesData(result, id);
+    // let error = {};
+    // try {
+    //   const updSyncroData = result.imagen;
+    //   await this.productosRepository.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), id]);
+    // } catch (errorMsg) {
+    //   error = errorMsg;
+    //   console.log('Error', error)
+    // }
 
 
     return {...result, error};
+  }
+
+
+  public async updateUnidadesData(result: any, id: number): Promise<any> {
+    //  4. Actualizar el producto con el ID de Shopify
+    let error = {};
+    try {
+      const updSyncroData = result.imagen;
+      if (result.imagen !== undefined)
+        await this.productosRepository.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), id]);
+      else
+        await this.productosRepository.execute(`UPDATE unidades SET shopify_id=? WHERE id=?;`, [result.shopifyId, id]);
+
+
+    } catch (errorMsg) {
+      error = errorMsg;
+      console.error('Error', error);
+    }
+    return error;
   }
 
   /**
    * Mapea el modelo Productos al formato esperado por Shopify
    */
   private mapToShopifyFormat(producto: Productos, id: number): ProductData {
+    const url = producto?.extraData.syncro_data?.url ?? null;
+
+    // console.log(url)
+    // console.log(producto.imagenWeb);
+    // console.log(producto.extraData)
     return {
       title: producto.titulo ?? '',
       description: producto.descripcion,
       vendor: 'Euroinnova',
       productType: 'Curso',
-      // status: producto.publicado ? 'active' : 'draft',
+      // status: producto?.publicado ? 'active' : 'draft',
       // variants: [{
       price: producto.precio ?? 0,
       sku: producto.codigo ?? '',
@@ -209,7 +346,7 @@ export class ProductosController {
       // }],
       locations_data: [],
       metafields: this.getShopifyMetafields(producto, id),
-      imagenWeb: producto.imagenWeb ?? undefined,
+      imagenWeb: url !== producto.imagenWeb ? producto.imagenWeb : undefined,
       tituloComercial: producto.tituloComercial ?? undefined,
       handle: producto.url,
       seo: producto.descripcionSeo ? {
@@ -226,9 +363,15 @@ export class ProductosController {
 
     try {
 
-      const idiomas = [...new Set([producto.extraData.idioma_shopify, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
-      console.log(idiomas)
+      const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
+      // console.log(idiomas)
       return [
+        {
+          namespace: 'custom',
+          key: 'coleccion_shopify',
+          value: producto.extraData.colecciones_shopify ?? "",
+          type: 'single_line_text_field'
+        },
         {
           namespace: 'custom',
           key: 'escuela',

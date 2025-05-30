@@ -22,6 +22,7 @@ import {
 import {Facultades} from '../models';
 import {FacultadesRepository} from '../repositories';
 import {FacultadesInterface, ShopifyService, SyncResults} from '../services/shopify.service';
+import {GeneralController} from './general.controller';
 
 export class FacultadesController {
   constructor(
@@ -29,6 +30,8 @@ export class FacultadesController {
     public facultadesRepository: FacultadesRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('controllers.GeneralController')
+    public generalController: GeneralController,
   ) { }
 
 
@@ -52,18 +55,26 @@ export class FacultadesController {
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.facultadesRepository.find();// as FacultadesInterface[];
       const facultadesData = data.map(f => ({id_facultad: f.id, nombre: f.nombre, logo: f.logo})) as FacultadesInterface[];
-      // console.log(facultadesData)
+
+      // creando Collecciones en caso de que no existan
+      const facs2collections = data.map(fc => fc.nombre) as string[];
+      for (const element of facs2collections) {
+        await this.generalController.findOrCreateCollection(element);
+      }
 
       // 2. Validar que hay datos antes de continuar
       if (!facultadesData || facultadesData.length === 0) {
         throw new Error('No se encontraron facultades para sincronizar');
       }
 
+
+
+
       // 3. Sincronizar con Shopify
       const syncResult = await this.shopifyService.syncronizeFacultades(facultadesData, this.facultadesRepository);
 
       // 4. Logging más informativo
-      console.log('Sincronización completada:', syncResult);
+      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {

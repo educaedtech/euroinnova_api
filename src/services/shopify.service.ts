@@ -40,6 +40,7 @@ export interface ProductData {
     description?: string;
   },
   syncro_data?: {url: string, idShopi: string};
+  status?: string;
 }
 
 export interface CreditsInterface {
@@ -159,6 +160,7 @@ export class ShopifyService {
       }`;
 
       const searchResponse = await this.makeShopifyRequest(searchQuery, {});
+      // console.log(searchResponse);
       let gid = undefined;
       try {
         gid = searchResponse.data.products.edges[0].node.id;
@@ -227,6 +229,8 @@ export class ShopifyService {
         input: productInput
       };
 
+      // console.log(JSON.stringify(variables))
+
       const createResponse = await this.makeShopifyRequest(createQuery, variables);
 
       if (
@@ -247,7 +251,7 @@ export class ShopifyService {
       let nDataImg = undefined;
       if (product.imagenWeb /*&& !gid*/) {
         imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id, product.syncro_data);
-        console.log(imgWeb);
+        // console.log(imgWeb);
         if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
           nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
         }
@@ -389,7 +393,7 @@ export class ShopifyService {
     return str?.replace(/</g, '&lt;').replace(/>/g, '&gt;') ?? '';
   }
 
-  private async makeShopifyRequest(
+  public async makeShopifyRequest(
     query: string,
     variables: object = {},
   ): Promise<any> {
@@ -413,7 +417,7 @@ export class ShopifyService {
   private async uploadImageToShopify(imageUrl: string, productId: string, syncro_data?: {url: string, idShopi: string}): Promise<any> {
 
     if (syncro_data?.url === imageUrl) {
-      return {msg: "upload image don'y needed"}
+      return {msg: "upload image don't needed"}
     }
     const mutation = `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
@@ -492,7 +496,7 @@ export class ShopifyService {
         }
       });
 
-      console.log('existingResponse', existingMetaobjectsMap)
+      // console.log('existingResponse', existingMetaobjectsMap)
       // 3. Procesar cada crédito
       for (const credit of creditos) {
         try {
@@ -727,7 +731,7 @@ export class ShopifyService {
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
-          console.log('EROR', error)
+          console.error('EROR', error)
           results.errors.push({
             creditId: escuela.id_escuela,
             error: error instanceof Error ? error.message : String(error)
@@ -782,7 +786,7 @@ export class ShopifyService {
         }
       });
 
-      // console.log('existingResponse', existingMetaobjectsMap)
+
 
       // 3. Procesar cada area
       for (const area of areasOnDB) {
@@ -841,7 +845,7 @@ export class ShopifyService {
             }
 
           } else {
-            console.log('No Entro');
+            // console.log('No Entro');
             // 6. Crear nueva area si no existe
             const createMutation = `
                 mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
@@ -879,7 +883,7 @@ export class ShopifyService {
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
-          console.log('EROR', error)
+          console.error('EROR', error)
           results.errors.push({
             creditId: area.id_area,
             error: error instanceof Error ? error.message : String(error)
@@ -933,7 +937,7 @@ export class ShopifyService {
         }
       });
 
-      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada facultad
       for (const fac of facultadesData) {
@@ -1022,7 +1026,7 @@ export class ShopifyService {
 
             results.created++;
           }
-          console.log(`UPDATE facultades SET shopify_id=? WHERE id=?;`, shopifyIdUpdate, idInstDB)
+          // console.log(`UPDATE facultades SET shopify_id=? WHERE id=?;`, shopifyIdUpdate, idInstDB)
           await repo.execute(`UPDATE facultades SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
 
 
@@ -1076,7 +1080,7 @@ export class ShopifyService {
         }
       });
 
-      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada institucion
       for (const fac of institutionsData) {
@@ -1092,7 +1096,7 @@ export class ShopifyService {
 
 
           const existing = existingMetaobjectsMap.get(fac.id_institucion_educativa.toString());
-          console.log('Existing', existing)
+          // console.log('Existing', existing)
           let shopifyIdUpdate = null; //est para actualizar el valor del id shopify en la tabla de instituciones ediucativas
           if (existing) {
             shopifyIdUpdate = existing.id;
@@ -1221,7 +1225,7 @@ export class ShopifyService {
         }
       });
 
-      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada institucion
       for (const fac of nivelesEduData) {
@@ -1237,7 +1241,7 @@ export class ShopifyService {
 
 
           const existing = existingMetaobjectsMap.get(fac.id_nivel_educativo.toString());
-          console.log('Existing', existing)
+          // console.log('Existing', existing)
           let shopifyIdUpdate = null; //est para actualizar el valor del id shopify en la tabla de instituciones ediucativas
           if (existing) {
             shopifyIdUpdate = existing.id;
@@ -1364,7 +1368,7 @@ export class ShopifyService {
         }
       });
 
-      console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
+      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada institucion
       for (const fac of idioomasEduData) {
@@ -1380,7 +1384,7 @@ export class ShopifyService {
 
 
           const existing = existingMetaobjectsMap.get(fac.id_idioma.toString());
-          console.log('Existing', existing)
+          // console.log('Existing', existing)
           let shopifyIdUpdate = null; //est para actualizar el valor del id shopify en la tabla de instituciones ediucativas
           if (existing) {
             shopifyIdUpdate = existing.id;

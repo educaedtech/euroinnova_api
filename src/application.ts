@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 import {BootMixin} from '@loopback/boot';
 import {ApplicationConfig} from '@loopback/core';
 import {RepositoryMixin} from '@loopback/repository';
@@ -8,9 +9,12 @@ import {
 } from '@loopback/rest-explorer';
 import {ServiceMixin} from '@loopback/service-proxy';
 import path from 'path';
+import {setupBullBoard} from './bull/bull-setup';
 import {MySequence} from './sequence';
+import {QueueService} from './services/queue.service';
 import {ShopifyService} from './services/shopify.service';
 export {ApplicationConfig};
+
 
 export class EuroinnovaApiApplication extends BootMixin(
   ServiceMixin(RepositoryMixin(RestApplication)),
@@ -42,7 +46,6 @@ export class EuroinnovaApiApplication extends BootMixin(
     };
 
 
-
     // Configuración de Shopify
     this.bind('config.shopify').to({
       storeUrl: process.env.SHOPIFY_STORE_URL,
@@ -52,6 +55,33 @@ export class EuroinnovaApiApplication extends BootMixin(
 
     // Registrar el servicio
     this.service(ShopifyService);
+    this.service(QueueService)
+
+    // inicializando monitor de colas de trabajo
+    this.setupQueues()
+
+
 
   }
+
+  async setupQueues() {
+    const queueService = await this.get('services.QueueService') as QueueService;
+    const bullRouter = await setupBullBoard(queueService);
+
+    // Montaje directo sin necesidad de crear una nueva app Express
+    this.mountExpressRouter('/admin/queues', bullRouter);
+
+    console.log(`Queue Monitor is running at /admin/queues`);
+  }
+  // async setupQueues() {
+  //   const queueService = await this.get('services.QueueService') as QueueService;
+  //   const bullRouter = await setupBullBoard(queueService);
+
+  //   const expressApp = express();
+  //   expressApp.use('/admin/queues', bullRouter);
+
+  //   this.mountExpressRouter('/', expressApp);
+  //   console.log(`Queue Monitor is running at /admin/queues`);
+  //   // this.mount('/admin/queues', bullRouter);
+  // }
 }

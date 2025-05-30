@@ -60,7 +60,7 @@ export class CreditosController {
       const syncResult = await this.shopifyService.syncronizeCredits(creditosData, this.creditosProductosRepository);
 
       // 4. Logging más informativo
-      console.log('Sincronización completada:', syncResult);
+      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {

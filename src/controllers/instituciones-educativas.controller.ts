@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
   Count,
@@ -61,7 +62,7 @@ export class InstitucionesEducativasController {
       const syncResult = await this.shopifyService.syncronizeInstitucionesEducativas(institutionsData, this.institucionesEducativasRepository);
 
       // 4. Logging más informativo
-      console.log('Sincronización completada:', syncResult);
+      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {

@@ -59,6 +59,8 @@ export class ProductosRepository extends DefaultCrudRepository<
           ne.shopify_id AS nivel_educativo_shopify,
           idio.shopify_id AS idioma_shopify,
           idio.nombre AS idioma_nombre,
+          u.shopify_id,
+          u.syncro_data,
           (
               SELECT JSON_ARRAYAGG(cp.shopify_id)
               FROM productos_creditos_productos pc
@@ -101,7 +103,15 @@ export class ProductosRepository extends DefaultCrudRepository<
 									JOIN idiomas idm ON pd.idioma_contenido_id = idm.id
 									WHERE uur.unidad_id = p.unidad_id AND uur.tipo_relacion_id = 1
 							) tmp
-					) as idiomas_relacionados
+					) as idiomas_relacionados,
+
+					CONCAT_WS(', ','AREAS',
+              a.nombre,
+              'FACULTADES',
+              f.nombre,'NIVELES EDUCATIVOS',
+              ne.nombre
+          ) AS colecciones_shopify
+
       FROM productos p
       LEFT JOIN unidades u ON p.unidad_id = u.id
       LEFT JOIN areas a ON u.area_id = a.id
@@ -113,14 +123,19 @@ export class ProductosRepository extends DefaultCrudRepository<
       LEFT JOIN escuelas es ON es.id = u.escuela_id
       WHERE p.unidad_id = ?;`;
 
+
+      /**'ESCUELAS',
+              es.nombre, */
       const extraData = await this.dataSource.execute(
         extraDataQuery,
         [producto.unidadId],
       );
 
-      const {idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo} = extraData[0] ?? {area_shopify: null, facultad_shopify: null, nivel_educativo_shopify: null, idioma_shopify: null};
+      // console.log(extraData)
 
-      producto.extraData = {idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
+      const {shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo} = extraData[0] ?? {area_shopify: null, facultad_shopify: null, nivel_educativo_shopify: null, idioma_shopify: null};
+
+      producto.extraData = {shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
       // console.log('extraData', extraData);
 
     }
