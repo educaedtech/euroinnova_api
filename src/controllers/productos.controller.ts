@@ -285,7 +285,7 @@ export class ProductosController {
 
     // 2. Transformar a formato Shopify
     const shopifyProduct = this.mapToShopifyFormat(producto, id);
-    // console.log('Producto', shopifyProduct)
+    console.log('Producto', shopifyProduct)
     // 3. Sincronizar con Shopify
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
 
