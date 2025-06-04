@@ -8,6 +8,7 @@ import {
   RestExplorerComponent,
 } from '@loopback/rest-explorer';
 import {ServiceMixin} from '@loopback/service-proxy';
+import fetch from 'node-fetch';
 import path from 'path';
 import {setupBullBoard} from './bull/bull-setup';
 import {EuroProductosDataSource} from './datasources';
@@ -77,29 +78,42 @@ export class EuroinnovaApiApplication extends BootMixin(
     // inicializando monitor de colas de trabajo
     this.setupQueues()
 
-
-    // // ------ descomentar cuando se cree tenga la tabla user para generar modelo, repo etc.. para la authentciacion ----------
-    // // ------ ADD SNIPPET AT THE BOTTOM ---------
-    // // Mount authentication system
-    // this.component(AuthenticationComponent);
-    // // Mount jwt component
-    // this.component(JWTAuthenticationComponent);
-    // // Bind datasource
-    // this.dataSource(EuroProductosDataSource, UserServiceBindings.DATASOURCE_NAME);
-    // // ------------- END OF SNIPPET -------------
-
+    this.getIPData();
   }
 
   async setupQueues() {
     const queueService = await this.get('services.QueueService') as QueueService;
     const bullRouter = await setupBullBoard(queueService);
 
-
-
-    // Montaje directo sin necesidad de crear una nueva app Express
     this.mountExpressRouter('/admin/queues', bullRouter);
-
     console.log(`Queue Monitor is running at /admin/queues`);
+  }
+
+  async getIPData() {
+    try {
+      const url = 'https://ipinfo.io/json';
+
+      try {
+        const response2 = await fetch(url, {
+          method: 'GET',
+        });
+
+        let dres = null;
+        const contentType = response2.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          dres = await response2.json(); // Parsear como JSON
+        } else {
+          dres = await response2.text(); // Parsear como texto
+        }
+
+        console.log(dres);
+
+      } catch (error) {
+        console.error('ERROR geting IP INFO:', error);
+      }
+    } catch (error) {
+      console.error('Error procesando el envío de correo:', error.message);
+    }
   }
 
 }
