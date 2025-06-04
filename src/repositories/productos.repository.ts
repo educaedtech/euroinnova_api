@@ -16,6 +16,54 @@ export class ProductosRepository extends DefaultCrudRepository<
     super(Productos, dataSource);
   }
 
+  /**
+   * Encuentra productos relacionados con un merchant específico y activos
+   * @param merchantId ID del merchant
+   * @param filter Filtro opcional para los productos
+   * @returns Promise con array de productos relacionados
+   */
+  async findByMerchant(
+    merchantId: number,
+    filter?: any,
+  ): Promise<ProductosWithRelations[]> {
+    // Primero obtenemos las unidades relacionadas con el merchant activo
+    const unidadesActivas = await this.dataSource.execute(
+      `SELECT DISTINCT productos.unidad_id
+       FROM unidades_merchants JOIN productos ON productos.unidad_id = unidades_merchants.unidad_id
+       WHERE merchant_id = ? AND activo = 1`,
+      [merchantId]
+    );
+
+    console.log('unidadesActivas', unidadesActivas.length)
+
+    if (!unidadesActivas || unidadesActivas.length === 0) {
+      return [];
+    }
+
+    // Extraemos los IDs de las unidades
+    const unidadIds = unidadesActivas.map((u: any) => u.unidad_id);
+
+    // Creamos un filtro para buscar los productos por unidad_id
+    const whereClause = {
+      ...filter?.where,
+      unidadId: {inq: unidadIds}
+    };
+
+    // console.log('where', whereClause)
+    const productos = await this.find({
+      ...filter,
+      where: whereClause
+    });
+
+
+    // Si necesitas incluir las relaciones como en findByIdMine
+    const productosConRelaciones = await Promise.all(
+      productos.map(p => this.findByIdMine(p.unidadId))
+    );
+
+    return productosConRelaciones;
+  }
+
 
   async findByIdMine(
     id: typeof Productos.prototype.id,

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
-import {inject} from '@loopback/core';
+import {inject, injectable} from '@loopback/core';
 import {
   repository
 } from '@loopback/repository';
@@ -23,8 +23,9 @@ import {QueueService} from '../services/queue.service';
 interface SyncBatchRequest {
   batchSize?: number;
   productIds?: number[]; // Opcional: para sincronizar productos específicos
+  limit?: number;// Optional: cantidad de productos a sincronizar
 }
-
+@injectable()
 export class ProductosController {
   constructor(
     @repository(ProductosRepository)
@@ -68,6 +69,7 @@ export class ProductosController {
                 items: {type: 'number'},
                 nullable: true,
               },
+              limit: {type: 'number', default: 1, nullable: true, },
             },
           },
         },
@@ -84,7 +86,7 @@ export class ProductosController {
     const batchSize = options?.batchSize ?? 100;
 
     // Obtener todos los productos o los específicos si se proporcionan IDs
-    const productos: Productos[] = [];
+    let productos: Productos[] = [];
 
     // console.log(options);
 
@@ -103,15 +105,17 @@ export class ProductosController {
 
     } else {
       console.log('desarrollar paginacion para el envio de colas y acceso a datos');
-      // productos = (await this.productosRepository.find()).slice(10);
+
+      productos = await this.productosRepository.findByMerchant(1, {
+        //where: {activo: 1},
+        limit: options?.limit ?? 10
+      });
     }
 
     // Transformar productos al formato de Shopify
     const shopifyProducts: ProductData[] = productos.map(producto => {
       return this.mapToShopifyFormat(producto, producto.unidadId)
-    }
-
-    );
+    });
 
     // Procesar en lotes
     const batches: ProductData[][] = [];
@@ -135,8 +139,6 @@ export class ProductosController {
       message: `Sincronización masiva iniciada. ${shopifyProducts.length} productos en ${batches.length} lotes de ${batchSize}.`,
     };
   }
-
-
 
 
   @get('/productos/{id}')
@@ -291,15 +293,8 @@ export class ProductosController {
 
     //  4. Actualizar el producto con el ID de Shopify
 
-    const error = await this.updateUnidadesData(result, id);
-    // let error = {};
-    // try {
-    //   const updSyncroData = result.imagen;
-    //   await this.productosRepository.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), id]);
-    // } catch (errorMsg) {
-    //   error = errorMsg;
-    //   console.log('Error', error)
-    // }
+    const error = {};//await this.updateUnidadesData(result, id);
+
 
 
     return {...result, error};
@@ -330,8 +325,8 @@ export class ProductosController {
   private mapToShopifyFormat(producto: Productos, id: number): ProductData {
     const url = producto?.extraData.syncro_data?.url ?? null;
 
-    // console.log(url)
-    // console.log(producto.imagenWeb);
+    console.log(url)
+    console.log(producto.imagenWeb);
     // console.log(producto.extraData)
     return {
       title: producto.titulo ?? '',
@@ -346,13 +341,13 @@ export class ProductosController {
       // }],
       locations_data: [],
       metafields: this.getShopifyMetafields(producto, id),
-      imagenWeb: url !== producto.imagenWeb ? producto.imagenWeb : undefined,
+      imagenWeb: producto.imagenWeb ?? undefined,// url !== producto.imagenWeb ? producto.imagenWeb : undefined,
       tituloComercial: producto.tituloComercial ?? undefined,
       handle: producto.url,
       seo: producto.descripcionSeo ? {
         description: producto.descripcionSeo ?? undefined
       } : undefined,
-      // syncro_data: {url: producto?.syncro_data.url ?? '', idShopi: producto?.syncro_data.idShopi ?? ''}
+      syncro_data: producto?.extraData.syncro_data ?? undefined
     };
   }
 

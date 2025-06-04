@@ -3,7 +3,7 @@
 import {inject, injectable} from '@loopback/core';
 import {HttpErrors} from '@loopback/rest';
 import fetch from 'node-fetch';
-import {AreasRepository, CreditosProductosRepository, EscuelasRepository, FacultadesRepository, IdiomasRepository, InstitucionesEducativasRepository, NivelesEducativosRepository} from '../repositories';
+import {AreasRepository, CreditosProductosRepository, EscuelasRepository, FacultadesRepository, IdiomasRepository, InstitucionesEducativasRepository, NivelesEducativosRepository, ProductosRepository} from '../repositories';
 
 // Interfaces para los tipos
 interface ShopifyConfig {
@@ -104,6 +104,8 @@ export class ShopifyService {
   constructor(
     @inject('config.shopify')
     private config: ShopifyConfig,
+    @inject('repositories.ProductosRepository')
+    private productosRepo: ProductosRepository,
   ) { }
 
   async createShopifyProduct(product: ProductData): Promise<{
@@ -115,6 +117,7 @@ export class ShopifyService {
     imagen?: object;
   }> {
     try {
+
 
       const channelsQuery = `{
             publications(first: 10) {
@@ -133,11 +136,6 @@ export class ShopifyService {
         "publicationId": edge.node.id, // ID del canal
         "publishDate": new Date().toISOString()// Opcional
       }))
-
-      // console.log(publications);
-
-
-      // console.log('Creating/Updating Shopify product:', product);
 
       // buscamos el producto en shopify para determinar si ya existe via SKU
       const searchQuery = `query GetProductBySku {
@@ -229,7 +227,7 @@ export class ShopifyService {
         input: productInput
       };
 
-      // console.log(JSON.stringify(variables))
+      console.log(Math.random())
 
       const createResponse = await this.makeShopifyRequest(createQuery, variables);
 
@@ -249,11 +247,30 @@ export class ShopifyService {
       //si tiene imagen subirla shopify y asignarsela al producto
       let imgWeb = undefined;
       let nDataImg = undefined;
-      if (product.imagenWeb /*&& !gid*/) {
+      console.log('imagenWeb', product.imagenWeb)
+      if (product.imagenWeb !== undefined) {
+        console.log('paso')
         imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id, product.syncro_data);
-        // console.log(imgWeb);
+
         if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
           nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
+        }
+
+        console.log('work', imgWeb, nDataImg)
+        //  4. Actualizar el producto,syncro_data (unidades) con el ID de Shopify
+        const idCurso = parseInt(product.metafields?.find(f => f.key === 'id_curso')?.value ?? '-1')
+        console.log('idCurso', idCurso);
+        let error = {};
+        try {
+
+          if (nDataImg?.url !== undefined)
+            await this.productosRepo.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [newProduct.id, JSON.stringify(nDataImg), idCurso]);
+          else
+            await this.productosRepo.execute(`UPDATE unidades SET shopify_id=? WHERE id=?;`, [newProduct.id, idCurso]);
+
+        } catch (errorMsg) {
+          error = errorMsg;
+          console.error('Error', error);
         }
 
       }
@@ -285,7 +302,9 @@ export class ShopifyService {
 
       await this.makeShopifyRequest(updateVariantQuery, {});
 
+      // making public on channels
       await this.publishProd(gid, publications);
+
 
       return {
         sku: product.sku,

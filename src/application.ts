@@ -10,17 +10,31 @@ import {
 import {ServiceMixin} from '@loopback/service-proxy';
 import path from 'path';
 import {setupBullBoard} from './bull/bull-setup';
+import {EuroProductosDataSource} from './datasources';
+import {basicAuthMiddleware} from './middlewares/auth.middleware';
+import {ProductosRepository} from './repositories';
 import {MySequence} from './sequence';
 import {QueueService} from './services/queue.service';
 import {ShopifyService} from './services/shopify.service';
 export {ApplicationConfig};
 
+// // ---------- ADD IMPORTS AUTH (cuando se cree la tabla user o se conozca de donde vaos a hacer el login)-------------
+// import {AuthenticationComponent} from '@loopback/authentication';
+// import {
+//   JWTAuthenticationComponent,
+//   UserServiceBindings
+// } from '@loopback/authentication-jwt';
+// import {EuroProductosDataSource} from './datasources';
+// //------------------------------------
 
 export class EuroinnovaApiApplication extends BootMixin(
   ServiceMixin(RepositoryMixin(RestApplication)),
 ) {
   constructor(options: ApplicationConfig = {}) {
     super(options);
+
+    // Middleware global (se ejecuta antes de todas las rutas)
+    this.middleware(basicAuthMiddleware);
 
     // Set up the custom sequence
     this.sequence(MySequence);
@@ -46,6 +60,7 @@ export class EuroinnovaApiApplication extends BootMixin(
     };
 
 
+
     // Configuración de Shopify
     this.bind('config.shopify').to({
       storeUrl: process.env.SHOPIFY_STORE_URL,
@@ -57,10 +72,21 @@ export class EuroinnovaApiApplication extends BootMixin(
     this.service(ShopifyService);
     this.service(QueueService)
 
+    this.dataSource(EuroProductosDataSource);
+    this.repository(ProductosRepository);
     // inicializando monitor de colas de trabajo
     this.setupQueues()
 
 
+    // // ------ descomentar cuando se cree tenga la tabla user para generar modelo, repo etc.. para la authentciacion ----------
+    // // ------ ADD SNIPPET AT THE BOTTOM ---------
+    // // Mount authentication system
+    // this.component(AuthenticationComponent);
+    // // Mount jwt component
+    // this.component(JWTAuthenticationComponent);
+    // // Bind datasource
+    // this.dataSource(EuroProductosDataSource, UserServiceBindings.DATASOURCE_NAME);
+    // // ------------- END OF SNIPPET -------------
 
   }
 
@@ -68,20 +94,12 @@ export class EuroinnovaApiApplication extends BootMixin(
     const queueService = await this.get('services.QueueService') as QueueService;
     const bullRouter = await setupBullBoard(queueService);
 
+
+
     // Montaje directo sin necesidad de crear una nueva app Express
     this.mountExpressRouter('/admin/queues', bullRouter);
 
     console.log(`Queue Monitor is running at /admin/queues`);
   }
-  // async setupQueues() {
-  //   const queueService = await this.get('services.QueueService') as QueueService;
-  //   const bullRouter = await setupBullBoard(queueService);
 
-  //   const expressApp = express();
-  //   expressApp.use('/admin/queues', bullRouter);
-
-  //   this.mountExpressRouter('/', expressApp);
-  //   console.log(`Queue Monitor is running at /admin/queues`);
-  //   // this.mount('/admin/queues', bullRouter);
-  // }
 }

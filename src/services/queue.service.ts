@@ -94,22 +94,11 @@ export class QueueService implements LifeCycleObserver {
         const results = [];
 
         for (const product of batch) {
+          // console.log(product);
           const result = await this.shopifyService.createShopifyProduct(product);
 
           // actualziando tabla unidades
-          let error = {};
-          try {
-            console.log('unidadId', parseInt(product.metafields.find((f: {key: string;}) => f.key === 'id_curso').value))
-            // const updSyncroData = result.imagen;
-            // if (result.imagen !== undefined)
-            //   await repo.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [result.shopifyId, JSON.stringify(updSyncroData), product.unidadId]);
-            // else
-            //   await repo.execute(`UPDATE unidades SET shopify_id=? WHERE id=?;`, [result.shopifyId, product.unidadId]);
-
-          } catch (errorMsg) {
-            error = errorMsg;
-            console.error('Error', error);
-          }
+          const error = {};
 
           results.push({
             productSku: product.sku,

@@ -9,3 +9,4 @@ export * from './instituciones-educativas.controller';
 export * from './niveles-educativos.controller';
 export * from './productos.controller';
 
+// export * from './user.controller';

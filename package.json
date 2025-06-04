@@ -52,6 +52,8 @@
   "dependencies": {
     "@bull-board/api": "^6.9.6",
     "@bull-board/express": "^6.9.6",
+    "@loopback/authentication": "^11.0.14",
+    "@loopback/authentication-jwt": "^0.15.14",
     "@loopback/boot": "^7.0.12",
     "@loopback/core": "^6.1.9",
     "@loopback/repository": "^7.0.12",

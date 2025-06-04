@@ -1,11 +1,6 @@
 import {inject, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
 import {juggler} from '@loopback/repository';
-
-// const MYSQL_HOST = "localhost";
-// const MYSQL_PORT = "3306";
-// const MYSQL_USER = "ismael";
-// const MYSQL_PASS = "Anaisabel*123";
-// const MYSQL_DB = "productos";
+import 'dotenv/config';
 
 const {MYSQL_HOST,
   MYSQL_PORT,
