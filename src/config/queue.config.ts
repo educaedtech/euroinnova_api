@@ -1,6 +1,6 @@
 // src/config/queue.config.ts
 import 'dotenv/config';
-// console.log('REDIS_HOST', process.env.REDIS_HOST)
+console.log('REDIS_HOST', process.env.REDIS_HOST)
 export const queueConfig = {
   redis: {
     // host: 'localhost',
