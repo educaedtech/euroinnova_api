@@ -24,6 +24,7 @@ interface SyncBatchRequest {
   batchSize?: number;
   productIds?: number[]; // Opcional: para sincronizar productos específicos
   limit?: number;// Optional: cantidad de productos a sincronizar
+  merchant?: number;// Optional: mercado de productos a sincronizar
 }
 @injectable()
 export class ProductosController {
@@ -70,6 +71,7 @@ export class ProductosController {
                 nullable: true,
               },
               limit: {type: 'number', default: 1, nullable: true, },
+              merchant: {type: 'number', default: 1, nullable: true, },
             },
           },
         },
@@ -104,9 +106,8 @@ export class ProductosController {
       }
 
     } else {
-      console.log('desarrollar paginacion para el envio de colas y acceso a datos');
 
-      productos = await this.productosRepository.findByMerchant(1, {
+      productos = await this.productosRepository.findByMerchant(options?.merchant ?? 1, {
         //where: {activo: 1},
         limit: options?.limit ?? 10
       });
@@ -116,6 +117,8 @@ export class ProductosController {
     const shopifyProducts: ProductData[] = productos.map(producto => {
       return this.mapToShopifyFormat(producto, producto.unidadId)
     });
+
+    console.log(JSON.stringify(shopifyProducts))
 
     // Procesar en lotes
     const batches: ProductData[][] = [];
