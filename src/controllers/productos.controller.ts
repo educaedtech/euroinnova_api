@@ -118,7 +118,7 @@ export class ProductosController {
       return this.mapToShopifyFormat(producto, producto.unidadId)
     });
 
-    console.log(JSON.stringify(shopifyProducts))
+    // console.log(JSON.stringify(shopifyProducts))
 
     // Procesar en lotes
     const batches: ProductData[][] = [];
