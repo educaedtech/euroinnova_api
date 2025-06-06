@@ -16,6 +16,74 @@ export class ProductosRepository extends DefaultCrudRepository<
     super(Productos, dataSource);
   }
 
+
+  /**
+ * Encuentra productos relacionados con un merchant específico y activos con paginación
+ * @param merchantId ID del merchant
+ * @param options Opciones de paginación y filtrado
+ * @returns Promise con objeto que contiene los productos y el total
+ */
+  async findByMerchantWithPagination(
+    merchantId: number,
+    options: {
+      limit: number;
+      offset: number;
+      where?: any;
+    }
+  ): Promise<{products: ProductosWithRelations[], total: number}> {
+    // 1. Obtener el total de unidades activas para el merchant (para paginación)
+    const totalQuery = `
+    SELECT COUNT(DISTINCT productos.unidad_id) as total
+    FROM unidades_merchants
+    JOIN productos ON productos.unidad_id = unidades_merchants.unidad_id
+    WHERE merchant_id = ? AND activo = 1
+  `;
+    const totalResult = await this.dataSource.execute(totalQuery, [merchantId]);
+    const total = totalResult[0]?.total ?? 0;
+
+    if (total === 0) {
+      return {products: [], total: 0};
+    }
+
+    // 2. Obtener las unidades activas paginadas
+    const unidadesQuery = `
+    SELECT DISTINCT productos.unidad_id
+    FROM unidades_merchants
+    JOIN productos ON productos.unidad_id = unidades_merchants.unidad_id
+    WHERE merchant_id = ? AND activo = 1
+    LIMIT ? OFFSET ?
+  `;
+    const unidadesActivas = await this.dataSource.execute(
+      unidadesQuery,
+      [merchantId, options.limit, options.offset]
+    );
+
+    // 3. Extraer los IDs de las unidades
+    const unidadIds = unidadesActivas.map((u: any) => u.unidad_id);
+
+    // 4. Buscar los productos por unidad_id
+    const whereClause = {
+      ...options?.where,
+      unidadId: {inq: unidadIds}
+    };
+
+    const productos = await this.find({
+      where: whereClause,
+      // No aplicamos limit/offset aquí porque ya lo hicimos a nivel de unidades
+    });
+
+    // 5. Cargar relaciones completas (similar a findByIdMine)
+    const productosConRelaciones = await Promise.all(
+      productos.map(p => this.findByIdMine(p.unidadId))
+    );
+
+    return {
+      products: productosConRelaciones,
+      total: total
+    };
+  }
+
+
   /**
    * Encuentra productos relacionados con un merchant específico y activos
    * @param merchantId ID del merchant

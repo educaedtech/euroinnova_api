@@ -247,16 +247,16 @@ export class ShopifyService {
       //si tiene imagen subirla shopify y asignarsela al producto
       let imgWeb = undefined;
       let nDataImg = undefined;
-      console.log('imagenWeb', product.imagenWeb)
+      // console.log('imagenWeb', product.imagenWeb)
       if (product.imagenWeb !== undefined) {
-        console.log('paso')
+        // console.log('paso')
         imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id, product.syncro_data);
 
         if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
           nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
         }
 
-        console.log('work', imgWeb, nDataImg)
+        // console.log('work', imgWeb, nDataImg)
         //  4. Actualizar el producto,syncro_data (unidades) con el ID de Shopify
         const idCurso = parseInt(product.metafields?.find(f => f.key === 'id_curso')?.value ?? '-1')
         console.log('idCurso', idCurso);
