@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject, injectable} from '@loopback/core';
-import {HttpErrors} from '@loopback/rest';
 import fetch from 'node-fetch';
 import {AreasRepository, CreditosProductosRepository, EscuelasRepository, FacultadesRepository, IdiomasRepository, InstitucionesEducativasRepository, NivelesEducativosRepository, ProductosRepository} from '../repositories';
 
@@ -316,9 +315,17 @@ export class ShopifyService {
       };
     } catch (error) {
       console.error('Error in createShopifyProduct:', error);
-      throw new HttpErrors.InternalServerError(
-        `Failed to create Shopify product: ${error.message}`,
-      );
+      return {
+        sku: product.sku,
+        success: false,
+        shopifyId: 'Failed to create Shopify product',
+        variantId: error.message,
+        inventoryItemId: '',
+        imagen: undefined,
+      };
+      // throw new HttpErrors.InternalServerError(
+      //   `Failed to create Shopify product: ${error.message}`,
+      // );
     }
   }
 
