@@ -143,6 +143,7 @@ export class ShopifyService {
             node {
               id
               title
+              handle
               variants(first: 1) {
                 edges {
                   node {
@@ -159,8 +160,10 @@ export class ShopifyService {
       const searchResponse = await this.makeShopifyRequest(searchQuery, {});
       // console.log(searchResponse);
       let gid = undefined;
+      let prdl = {handle: ''};
       try {
         gid = searchResponse.data.products.edges[0].node.id;
+        prdl = searchResponse.data.products.edges[0].node;
       } catch (error) {
         gid = undefined
       }
@@ -168,7 +171,7 @@ export class ShopifyService {
       const productInput = {
         id: gid,
         title: product.tituloComercial ? this.escapeGraphQLString(product.tituloComercial) : this.escapeGraphQLString(product.title),
-        handle: product.handle,
+        handle: prdl?.handle === product.handle ? undefined : product.handle,
         descriptionHtml: `<p>${this.escapeHtml(product.description ?? 'Descripción del producto')}</p>`,
         productType: product.productType ?? 'Curso',
         vendor: product.vendor ?? 'Euroinnova',
