@@ -237,7 +237,16 @@ export class ShopifyService {
         console.error(JSON.stringify(createResponse));
         const errors =
           createResponse.errors || createResponse.data.productSet.userErrors;
-        throw new Error(errors.map((e: {message: unknown;}) => e.message).join(', '));
+
+        return {
+          sku: product.sku,
+          success: false,
+          shopifyId: 'Failed to create Shopify product',
+          variantId: errors.map((e: {message: unknown;}) => e.message).join(', '),
+          inventoryItemId: '',
+          imagen: undefined,
+        };
+
       }
 
       const newProduct = createResponse.data.productSet.product;
@@ -269,7 +278,7 @@ export class ShopifyService {
 
         } catch (errorMsg) {
           error = errorMsg;
-          console.error('Error', error);
+          console.error('Error actualizando tabla: unidades', error);
         }
 
       }
