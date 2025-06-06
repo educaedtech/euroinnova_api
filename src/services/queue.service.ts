@@ -30,6 +30,7 @@ export class QueueService implements LifeCycleObserver {
         }
       }
     });
+
     this.setupQueueListeners();
     this.setupQueueProcessor();
   }
@@ -88,7 +89,7 @@ export class QueueService implements LifeCycleObserver {
   }
 
   private setupQueueProcessor() {
-    this.productSyncQueue.process('sync-product', 2, async (job: Job) => { // 2 = concurrencia
+    this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => { // 2 = concurrencia
       try {
         const {batch, batchId} = job.data;
         const results = [];
@@ -103,7 +104,8 @@ export class QueueService implements LifeCycleObserver {
           results.push({
             productSku: product.sku,
             shopifyId: result.shopifyId,
-            success: true,
+            variantId: result.variantId,
+            success: result.success,
             error
           });
         }
