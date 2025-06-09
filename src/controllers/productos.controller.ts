@@ -66,7 +66,7 @@ export class ProductosController {
     const pageSize = 200; // Productos a cargar por consulta
     let offset = 0;
     let totalProcessed = 0;
-    const totalBatches = 0;
+    let totalBatches = 0;
 
 
     // Procesamiento paginado para todos los productos
@@ -89,17 +89,17 @@ export class ProductosController {
         break;
       }
 
-      // // 2. Transformar y procesar en lotes pequeños
-      // const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
-      // const batches = this.createBatches(shopifyProducts, batchSize);
+      // 2. Transformar y procesar en lotes pequeños
+      const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
+      const batches = this.createBatches(shopifyProducts, batchSize);
 
-      // // 3. Enviar a la cola
-      // if (queueService) {
-      //   for (const batch of batches) {
-      //     await queueService.addProductBatchToSync(batch);
-      //     totalBatches++;
-      //   }
-      // }
+      // 3. Enviar a la cola
+      if (queueService) {
+        for (const batch of batches) {
+          await queueService.addProductBatchToSync(batch);
+          totalBatches++;
+        }
+      }
 
       totalProcessed += productos.length;
       offset += pageSize;
