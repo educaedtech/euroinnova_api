@@ -128,7 +128,7 @@ export class GeneralController {
     try {
       // console.log('Prod', product);
       const productId = product.id;
-      const arrTags = this.parseTags(product.tags);
+      // const arrTags = this.parseTags(product.tags);
       // console.log('TAGS', arrTags)
 
       // Obtener metadatos y colecciones del producto

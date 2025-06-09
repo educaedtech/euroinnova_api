@@ -36,6 +36,91 @@ export class ProductosController {
   ) { }
 
 
+
+  //--------------------------------------------------
+  @post('/productos/find-prod-not-in-shopify')
+  async findProdNotInShopify(
+    @requestBody({
+      description: 'Opciones para la sincronización por lotes',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              batchSize: {type: 'number', default: 100},
+              limit: {type: 'number', default: 1, nullable: true, },
+              merchant: {type: 'number', default: 1, nullable: true, },
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    totalProducts: number;
+    batchesCreated: number;
+    message: string;
+  }> {
+    const batchSize = options?.batchSize ?? 100;
+    const pageSize = 200; // Productos a cargar por consulta
+    let offset = 0;
+    let totalProcessed = 0;
+    const totalBatches = 0;
+
+
+    // Procesamiento paginado para todos los productos
+    let hasMore = true;
+
+    while (hasMore) {
+      // 1. Cargar una página de productos
+      const {products: productos, total} = await this.productosRepository.findByMerchantWithoutSYNC(
+        options?.merchant ?? 1,
+        {
+          limit: pageSize,
+          offset,
+        }
+      );
+
+      // console.log('Total Of Products', total)
+
+      if (productos.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // // 2. Transformar y procesar en lotes pequeños
+      // const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
+      // const batches = this.createBatches(shopifyProducts, batchSize);
+
+      // // 3. Enviar a la cola
+      // if (queueService) {
+      //   for (const batch of batches) {
+      //     await queueService.addProductBatchToSync(batch);
+      //     totalBatches++;
+      //   }
+      // }
+
+      totalProcessed += productos.length;
+      offset += pageSize;
+
+      // Liberar memoria
+      console.log(`liberando memoria`)
+      await new Promise(resolve => setImmediate(resolve));
+      console.log(`delay para (total: ${total}, offet: ${offset}, batch:${totalBatches}, totalProcessed: ${totalProcessed})`)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+
+    return {
+      totalProducts: totalProcessed,
+      batchesCreated: totalBatches,
+      message: `Sincronización masiva iniciada. ${totalProcessed} productos en ${totalBatches} lotes de ${batchSize}.`,
+    };
+  }
+
+
+
   //--------------------------------------------------
   @post('/productos/sync-batch-to-shopify-new')
   async syncBatchToShopifyNEW(
@@ -487,7 +572,7 @@ export class ProductosController {
     try {
 
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
-      // console.log(idiomas)
+
       return [
         {
           namespace: 'custom',
