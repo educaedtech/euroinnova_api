@@ -414,7 +414,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             CONCAT_WS( ', ', 'AREAS', a.nombre, 'FACULTADES', f.nombre, 'NIVELES EDUCATIVOS', ne.nombre ) AS colecciones_shopify,
             mr.nombre as vendor,
 	          ne.nombre as product_type,
-            um.url_mylxp,
+            (SELECT mylxps.url FROM mylxps WHERE mylxps.id=um.mylxp) as url_mylxp,
             po.nombre as plat_online_name,
             po.url as plat_online_url,
             ( SELECT rfu.shopify_id FROM references_data_unidad rfu WHERE rfu.unidad_id = u.id AND rfu.merchant_id=um.merchant_id) as shopify_id
