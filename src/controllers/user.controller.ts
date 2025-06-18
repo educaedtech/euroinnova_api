@@ -3,27 +3,20 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/licenses/MIT
 
-import {authenticate, TokenService} from '@loopback/authentication';
+import {TokenService} from '@loopback/authentication';
 import {
-  Credentials,
   MyUserService,
   TokenServiceBindings,
   User,
   UserRepository,
-  UserServiceBindings,
+  UserServiceBindings
 } from '@loopback/authentication-jwt';
 import {inject} from '@loopback/core';
 import {model, property, repository} from '@loopback/repository';
 import {
-  get,
-  getModelSchemaRef,
-  post,
-  requestBody,
-  SchemaObject,
+  SchemaObject
 } from '@loopback/rest';
-import {SecurityBindings, securityId, UserProfile} from '@loopback/security';
-import {genSalt, hash} from 'bcryptjs';
-import _ from 'lodash';
+import {SecurityBindings, UserProfile} from '@loopback/security';
 
 @model()
 export class NewUserRequest extends User {
@@ -68,6 +61,7 @@ export class UserController {
     @repository(UserRepository) protected userRepository: UserRepository,
   ) { }
 
+  /*
   @post('/users/login', {
     responses: {
       '200': {
@@ -157,4 +151,5 @@ export class UserController {
 
     return savedUser;
   }
+    */
 }

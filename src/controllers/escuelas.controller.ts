@@ -1,27 +1,17 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
+  repository
 } from '@loopback/repository';
 import {
-  del,
-  get,
-  getModelSchemaRef,
   param,
-  patch,
   post,
-  put,
-  requestBody,
-  response,
+  requestBody
 } from '@loopback/rest';
-import {Escuelas} from '../models';
 import {EscuelasRepository} from '../repositories';
-import {CreditsInterface, EscuelasInterface, ShopifyService, SyncResults} from '../services/shopify.service';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
+import {EscuelasInterface, GenInterface, ShopifyService, SyncResults} from '../services/shopify.service';
 
 export class EscuelasController {
   constructor(
@@ -29,26 +19,28 @@ export class EscuelasController {
     public escuelasRepository: EscuelasRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
 
-  @get('/escuelas/sync-to-shopify')
-  @response(200, {
-    description: 'Sincronize Array of Escuelas',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(Escuelas, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async syncronizeEscuelas(): Promise<{
-    syncedData: CreditsInterface[];
+  @post('/escuelas/sync-to-shopify/{merchant_id}')
+  async syncronizeEscuelas(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody() dataIN: any
+  ): Promise<{
+    syncedData: GenInterface[];
     syncResult: SyncResults;
   }> {
     try {
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      this.shopifyService.setCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const escuelasData = await this.escuelasRepository.find();// as any[];//CreditsInterface[];
       const normalizeData = escuelasData.map(escuela => ({id_escuela: escuela.id, nombre: escuela.nombre, logo: escuela.logo})) as EscuelasInterface[];
@@ -59,10 +51,7 @@ export class EscuelasController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeEscuelas(normalizeData, this.escuelasRepository);
-
-      // // 4. Logging más informativo
-      // console.log('Sincronización completada:', syncResult);
+      const syncResult = await this.shopifyService.syncronizeEscuelas(normalizeData, this.escuelasRepository, merchantId);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {
@@ -77,126 +66,127 @@ export class EscuelasController {
     }
   }
 
+  /*
+    @post('/escuelas')
+    @response(200, {
+      description: 'Escuelas model instance',
+      content: {'application/json': {schema: getModelSchemaRef(Escuelas)}},
+    })
+    async create(
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Escuelas, {
+              title: 'NewEscuelas',
+              exclude: ['id'],
+            }),
+          },
+        },
+      })
+      escuelas: Omit<Escuelas, 'id'>,
+    ): Promise<Escuelas> {
+      return this.escuelasRepository.create(escuelas);
+    }
 
-  @post('/escuelas')
-  @response(200, {
-    description: 'Escuelas model instance',
-    content: {'application/json': {schema: getModelSchemaRef(Escuelas)}},
-  })
-  async create(
-    @requestBody({
+    @get('/escuelas/count')
+    @response(200, {
+      description: 'Escuelas model count',
+      content: {'application/json': {schema: CountSchema}},
+    })
+    async count(
+      @param.where(Escuelas) where?: Where<Escuelas>,
+    ): Promise<Count> {
+      return this.escuelasRepository.count(where);
+    }
+
+    @get('/escuelas')
+    @response(200, {
+      description: 'Array of Escuelas model instances',
       content: {
         'application/json': {
-          schema: getModelSchemaRef(Escuelas, {
-            title: 'NewEscuelas',
-            exclude: ['id'],
-          }),
+          schema: {
+            type: 'array',
+            items: getModelSchemaRef(Escuelas, {includeRelations: true}),
+          },
         },
       },
     })
-    escuelas: Omit<Escuelas, 'id'>,
-  ): Promise<Escuelas> {
-    return this.escuelasRepository.create(escuelas);
-  }
+    async find(
+      @param.filter(Escuelas) filter?: Filter<Escuelas>,
+    ): Promise<Escuelas[]> {
+      return this.escuelasRepository.find(filter);
+    }
 
-  @get('/escuelas/count')
-  @response(200, {
-    description: 'Escuelas model count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async count(
-    @param.where(Escuelas) where?: Where<Escuelas>,
-  ): Promise<Count> {
-    return this.escuelasRepository.count(where);
-  }
-
-  @get('/escuelas')
-  @response(200, {
-    description: 'Array of Escuelas model instances',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(Escuelas, {includeRelations: true}),
+    @patch('/escuelas')
+    @response(200, {
+      description: 'Escuelas PATCH success count',
+      content: {'application/json': {schema: CountSchema}},
+    })
+    async updateAll(
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Escuelas, {partial: true}),
+          },
         },
-      },
-    },
-  })
-  async find(
-    @param.filter(Escuelas) filter?: Filter<Escuelas>,
-  ): Promise<Escuelas[]> {
-    return this.escuelasRepository.find(filter);
-  }
+      })
+      escuelas: Escuelas,
+      @param.where(Escuelas) where?: Where<Escuelas>,
+    ): Promise<Count> {
+      return this.escuelasRepository.updateAll(escuelas, where);
+    }
 
-  @patch('/escuelas')
-  @response(200, {
-    description: 'Escuelas PATCH success count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async updateAll(
-    @requestBody({
+    @get('/escuelas/{id}')
+    @response(200, {
+      description: 'Escuelas model instance',
       content: {
         'application/json': {
-          schema: getModelSchemaRef(Escuelas, {partial: true}),
+          schema: getModelSchemaRef(Escuelas, {includeRelations: true}),
         },
       },
     })
-    escuelas: Escuelas,
-    @param.where(Escuelas) where?: Where<Escuelas>,
-  ): Promise<Count> {
-    return this.escuelasRepository.updateAll(escuelas, where);
-  }
+    async findById(
+      @param.path.number('id') id: number,
+      @param.filter(Escuelas, {exclude: 'where'}) filter?: FilterExcludingWhere<Escuelas>
+    ): Promise<Escuelas> {
+      return this.escuelasRepository.findById(id, filter);
+    }
 
-  @get('/escuelas/{id}')
-  @response(200, {
-    description: 'Escuelas model instance',
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(Escuelas, {includeRelations: true}),
-      },
-    },
-  })
-  async findById(
-    @param.path.number('id') id: number,
-    @param.filter(Escuelas, {exclude: 'where'}) filter?: FilterExcludingWhere<Escuelas>
-  ): Promise<Escuelas> {
-    return this.escuelasRepository.findById(id, filter);
-  }
-
-  @patch('/escuelas/{id}')
-  @response(204, {
-    description: 'Escuelas PATCH success',
-  })
-  async updateById(
-    @param.path.number('id') id: number,
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Escuelas, {partial: true}),
-        },
-      },
+    @patch('/escuelas/{id}')
+    @response(204, {
+      description: 'Escuelas PATCH success',
     })
-    escuelas: Escuelas,
-  ): Promise<void> {
-    await this.escuelasRepository.updateById(id, escuelas);
-  }
+    async updateById(
+      @param.path.number('id') id: number,
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Escuelas, {partial: true}),
+          },
+        },
+      })
+      escuelas: Escuelas,
+    ): Promise<void> {
+      await this.escuelasRepository.updateById(id, escuelas);
+    }
 
-  @put('/escuelas/{id}')
-  @response(204, {
-    description: 'Escuelas PUT success',
-  })
-  async replaceById(
-    @param.path.number('id') id: number,
-    @requestBody() escuelas: Escuelas,
-  ): Promise<void> {
-    await this.escuelasRepository.replaceById(id, escuelas);
-  }
+    @put('/escuelas/{id}')
+    @response(204, {
+      description: 'Escuelas PUT success',
+    })
+    async replaceById(
+      @param.path.number('id') id: number,
+      @requestBody() escuelas: Escuelas,
+    ): Promise<void> {
+      await this.escuelasRepository.replaceById(id, escuelas);
+    }
 
-  @del('/escuelas/{id}')
-  @response(204, {
-    description: 'Escuelas DELETE success',
-  })
-  async deleteById(@param.path.number('id') id: number): Promise<void> {
-    await this.escuelasRepository.deleteById(id);
-  }
+    @del('/escuelas/{id}')
+    @response(204, {
+      description: 'Escuelas DELETE success',
+    })
+    async deleteById(@param.path.number('id') id: number): Promise<void> {
+      await this.escuelasRepository.deleteById(id);
+    }
+      */
 }

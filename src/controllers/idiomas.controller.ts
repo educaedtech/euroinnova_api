@@ -1,26 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
+  repository
 } from '@loopback/repository';
 import {
-  del,
-  get,
-  getModelSchemaRef,
   param,
-  patch,
   post,
-  put,
-  requestBody,
-  response,
+  requestBody
 } from '@loopback/rest';
-import {Idiomas} from '../models';
 import {IdiomasRepository} from '../repositories';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {IdiomasInterface, ShopifyService, SyncResults} from '../services/shopify.service';
 
 export class IdiomasController {
@@ -29,25 +19,28 @@ export class IdiomasController {
     public idiomasRepository: IdiomasRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
-  @get('/idiomas/sync-to-shopify')
-  @response(200, {
-    description: 'Sincronize Array of Idiomas',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(Idiomas, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async syncronizeNivelesEducativos(): Promise<{
+  @post('/idiomas/sync-to-shopify/{merchant_id}')
+  async syncronizeIdiomas(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody() dataIN: any
+  ): Promise<{
     syncedData: IdiomasInterface[];
     syncResult: SyncResults;
   }> {
     try {
+
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      this.shopifyService.setCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.idiomasRepository.find();
       const idiomaData = data.map(f => ({id_idioma: f.id, idioma: f.nombre, prefijo_idioma: f.iso})) as IdiomasInterface[];
@@ -59,10 +52,7 @@ export class IdiomasController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeIdiomas(idiomaData, this.idiomasRepository);
-
-      // 4. Logging más informativo
-      // console.log('Sincronización completada:', syncResult);
+      const syncResult = await this.shopifyService.syncronizeIdiomas(idiomaData, this.idiomasRepository, merchantId);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {
@@ -72,11 +62,12 @@ export class IdiomasController {
 
     } catch (error) {
       // 6. Manejo centralizado de errores
-      console.error('Error en syncronizeCredits:', error instanceof Error ? error.message : 'Error desconocido');
+      console.error('Error en syncronizeIdiomas:', error instanceof Error ? error.message : 'Error desconocido');
       throw error; // Re-lanzar para manejo superior
     }
   }
 
+  /*
   @post('/idiomas')
   @response(200, {
     description: 'Idiomas model instance',
@@ -198,4 +189,5 @@ export class IdiomasController {
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.idiomasRepository.deleteById(id);
   }
+    */
 }

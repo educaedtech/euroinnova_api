@@ -1,26 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
+  repository
 } from '@loopback/repository';
 import {
-  del,
-  get,
-  getModelSchemaRef,
   param,
-  patch,
   post,
-  put,
-  requestBody,
-  response,
+  requestBody
 } from '@loopback/rest';
-import {NivelesEducativos} from '../models';
 import {NivelesEducativosRepository} from '../repositories';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {NivelesEducativosInterface, ShopifyService, SyncResults} from '../services/shopify.service';
 import {GeneralController} from './general.controller';
 
@@ -32,33 +22,40 @@ export class NivelesEducativosController {
     public shopifyService: ShopifyService,
     @inject('controllers.GeneralController')
     public generalController: GeneralController,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
 
 
-  @get('/niveles-educativos/sync-to-shopify')
-  @response(200, {
-    description: 'Sincronize Array of Niveles Educaivos',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(NivelesEducativos, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async syncronizeNivelesEducativos(): Promise<{
+  @post('/niveles-educativos/sync-to-shopify/{merchant_id}')
+  async syncronizeNivelesEducativos(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody() dataIN: any
+  ): Promise<{
     syncedData: NivelesEducativosInterface[];
     syncResult: SyncResults;
   }> {
     try {
+
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      this.shopifyService.setCredentials(credentials);
+
+      // 3. pasar credenciales al sercio general para la actualizacion de colecciones etc.
+      this.generalController.setShopifyServiceCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.nivelesEducativosRepository.find();
       const nivEducData = data.map(f => ({id_nivel_educativo: f.id, nombre: f.nombre, logo: f.logo})) as NivelesEducativosInterface[];
 
       // creando Collecciones en caso de que no existan
       const niveles2collections = data.map(fc => fc.nombre) as string[];
+      niveles2collections.push('NIVELES EDUCATIVOS');
       for (const element of niveles2collections) {
         await this.generalController.findOrCreateCollection(element);
       }
@@ -69,10 +66,7 @@ export class NivelesEducativosController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeNivelesEducativos(nivEducData, this.nivelesEducativosRepository);
-
-      // 4. Logging más informativo
-      // console.log('Sincronización completada:', syncResult);
+      const syncResult = await this.shopifyService.syncronizeNivelesEducativos(nivEducData, this.nivelesEducativosRepository, merchantId);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {
@@ -88,126 +82,127 @@ export class NivelesEducativosController {
   }
 
 
+  /*
+    @post('/niveles-educativos')
+    @response(200, {
+      description: 'NivelesEducativos model instance',
+      content: {'application/json': {schema: getModelSchemaRef(NivelesEducativos)}},
+    })
+    async create(
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(NivelesEducativos, {
+              title: 'NewNivelesEducativos',
+              exclude: ['id'],
+            }),
+          },
+        },
+      })
+      nivelesEducativos: Omit<NivelesEducativos, 'id'>,
+    ): Promise<NivelesEducativos> {
+      return this.nivelesEducativosRepository.create(nivelesEducativos);
+    }
 
-  @post('/niveles-educativos')
-  @response(200, {
-    description: 'NivelesEducativos model instance',
-    content: {'application/json': {schema: getModelSchemaRef(NivelesEducativos)}},
-  })
-  async create(
-    @requestBody({
+    @get('/niveles-educativos/count')
+    @response(200, {
+      description: 'NivelesEducativos model count',
+      content: {'application/json': {schema: CountSchema}},
+    })
+    async count(
+      @param.where(NivelesEducativos) where?: Where<NivelesEducativos>,
+    ): Promise<Count> {
+      return this.nivelesEducativosRepository.count(where);
+    }
+
+    @get('/niveles-educativos')
+    @response(200, {
+      description: 'Array of NivelesEducativos model instances',
       content: {
         'application/json': {
-          schema: getModelSchemaRef(NivelesEducativos, {
-            title: 'NewNivelesEducativos',
-            exclude: ['id'],
-          }),
+          schema: {
+            type: 'array',
+            items: getModelSchemaRef(NivelesEducativos, {includeRelations: true}),
+          },
         },
       },
     })
-    nivelesEducativos: Omit<NivelesEducativos, 'id'>,
-  ): Promise<NivelesEducativos> {
-    return this.nivelesEducativosRepository.create(nivelesEducativos);
-  }
+    async find(
+      @param.filter(NivelesEducativos) filter?: Filter<NivelesEducativos>,
+    ): Promise<NivelesEducativos[]> {
+      return this.nivelesEducativosRepository.find(filter);
+    }
 
-  @get('/niveles-educativos/count')
-  @response(200, {
-    description: 'NivelesEducativos model count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async count(
-    @param.where(NivelesEducativos) where?: Where<NivelesEducativos>,
-  ): Promise<Count> {
-    return this.nivelesEducativosRepository.count(where);
-  }
-
-  @get('/niveles-educativos')
-  @response(200, {
-    description: 'Array of NivelesEducativos model instances',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(NivelesEducativos, {includeRelations: true}),
+    @patch('/niveles-educativos')
+    @response(200, {
+      description: 'NivelesEducativos PATCH success count',
+      content: {'application/json': {schema: CountSchema}},
+    })
+    async updateAll(
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(NivelesEducativos, {partial: true}),
+          },
         },
-      },
-    },
-  })
-  async find(
-    @param.filter(NivelesEducativos) filter?: Filter<NivelesEducativos>,
-  ): Promise<NivelesEducativos[]> {
-    return this.nivelesEducativosRepository.find(filter);
-  }
+      })
+      nivelesEducativos: NivelesEducativos,
+      @param.where(NivelesEducativos) where?: Where<NivelesEducativos>,
+    ): Promise<Count> {
+      return this.nivelesEducativosRepository.updateAll(nivelesEducativos, where);
+    }
 
-  @patch('/niveles-educativos')
-  @response(200, {
-    description: 'NivelesEducativos PATCH success count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async updateAll(
-    @requestBody({
+    @get('/niveles-educativos/{id}')
+    @response(200, {
+      description: 'NivelesEducativos model instance',
       content: {
         'application/json': {
-          schema: getModelSchemaRef(NivelesEducativos, {partial: true}),
+          schema: getModelSchemaRef(NivelesEducativos, {includeRelations: true}),
         },
       },
     })
-    nivelesEducativos: NivelesEducativos,
-    @param.where(NivelesEducativos) where?: Where<NivelesEducativos>,
-  ): Promise<Count> {
-    return this.nivelesEducativosRepository.updateAll(nivelesEducativos, where);
-  }
+    async findById(
+      @param.path.number('id') id: number,
+      @param.filter(NivelesEducativos, {exclude: 'where'}) filter?: FilterExcludingWhere<NivelesEducativos>
+    ): Promise<NivelesEducativos> {
+      return this.nivelesEducativosRepository.findById(id, filter);
+    }
 
-  @get('/niveles-educativos/{id}')
-  @response(200, {
-    description: 'NivelesEducativos model instance',
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(NivelesEducativos, {includeRelations: true}),
-      },
-    },
-  })
-  async findById(
-    @param.path.number('id') id: number,
-    @param.filter(NivelesEducativos, {exclude: 'where'}) filter?: FilterExcludingWhere<NivelesEducativos>
-  ): Promise<NivelesEducativos> {
-    return this.nivelesEducativosRepository.findById(id, filter);
-  }
-
-  @patch('/niveles-educativos/{id}')
-  @response(204, {
-    description: 'NivelesEducativos PATCH success',
-  })
-  async updateById(
-    @param.path.number('id') id: number,
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(NivelesEducativos, {partial: true}),
-        },
-      },
+    @patch('/niveles-educativos/{id}')
+    @response(204, {
+      description: 'NivelesEducativos PATCH success',
     })
-    nivelesEducativos: NivelesEducativos,
-  ): Promise<void> {
-    await this.nivelesEducativosRepository.updateById(id, nivelesEducativos);
-  }
+    async updateById(
+      @param.path.number('id') id: number,
+      @requestBody({
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(NivelesEducativos, {partial: true}),
+          },
+        },
+      })
+      nivelesEducativos: NivelesEducativos,
+    ): Promise<void> {
+      await this.nivelesEducativosRepository.updateById(id, nivelesEducativos);
+    }
 
-  @put('/niveles-educativos/{id}')
-  @response(204, {
-    description: 'NivelesEducativos PUT success',
-  })
-  async replaceById(
-    @param.path.number('id') id: number,
-    @requestBody() nivelesEducativos: NivelesEducativos,
-  ): Promise<void> {
-    await this.nivelesEducativosRepository.replaceById(id, nivelesEducativos);
-  }
+    @put('/niveles-educativos/{id}')
+    @response(204, {
+      description: 'NivelesEducativos PUT success',
+    })
+    async replaceById(
+      @param.path.number('id') id: number,
+      @requestBody() nivelesEducativos: NivelesEducativos,
+    ): Promise<void> {
+      await this.nivelesEducativosRepository.replaceById(id, nivelesEducativos);
+    }
 
-  @del('/niveles-educativos/{id}')
-  @response(204, {
-    description: 'NivelesEducativos DELETE success',
-  })
-  async deleteById(@param.path.number('id') id: number): Promise<void> {
-    await this.nivelesEducativosRepository.deleteById(id);
-  }
+    @del('/niveles-educativos/{id}')
+    @response(204, {
+      description: 'NivelesEducativos DELETE success',
+    })
+    async deleteById(@param.path.number('id') id: number): Promise<void> {
+      await this.nivelesEducativosRepository.deleteById(id);
+    }
+      */
 }

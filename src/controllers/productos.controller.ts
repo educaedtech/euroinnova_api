@@ -5,18 +5,17 @@ import {
   repository
 } from '@loopback/repository';
 import {
-  get,
-  getModelSchemaRef,
   param,
-  post,
-  response
+  post
 } from '@loopback/rest';
-import {Productos, ProductosWithRelations} from '../models';
+import {Productos} from '../models';
 import {ProductosRepository} from '../repositories';
 import {Metafield, ProductData, ShopifyService} from '../services/shopify.service';
 
 // seccion para sincronizacion en lotes (jobs)
 import {requestBody} from '@loopback/rest';
+import {LoggerService} from '../services/logger.service';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {QueueService} from '../services/queue.service';
 
 //  interfaz para el request body
@@ -25,19 +24,220 @@ interface SyncBatchRequest {
   productIds?: number[]; // Opcional: para sincronizar productos específicos
   limit?: number;// Optional: cantidad de productos a sincronizar
   merchant?: number;// Optional: mercado de productos a sincronizar
+  hours?: number;
 }
 @injectable()
 export class ProductosController {
   constructor(
     @repository(ProductosRepository)
     public productosRepository: ProductosRepository,
+    @inject('services.LoggerService')
+    private logger: LoggerService,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
 
+  @post('/productos/cants-prods-2-sync/{merchant_id}')
+  async cantsProds2Sync(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Opciones para la sincronización por lotes y MERCHANTS',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              batchSize: {type: 'number', default: 100},
+              limit: {type: 'number', default: 1, nullable: true},
+              hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    totalProducts: number;
+    activos: number;
+    inactivos: number;
+  }> {
 
-  //--------------------------------------------------
+    // this.logger.log(`Test log: Just Testing`);
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+
+    //------ BLOCK generar BATCHES DE PRODUCTOS A SYNCRONIZAR ------------
+
+    // const batchSize = options?.batchSize ?? 100;
+    const hours = options?.hours ?? 72;
+    const pageSize = 200; // Productos a cargar por consulta
+    let offset = 0;
+    // const totalProcessed = 0;
+    // const totalBatches = 0;
+
+    // Procesamiento paginado para todos los productos
+    let hasMore = true;
+
+    let totalProds = 0, totalActives = 0, totalInactives = 0;
+    while (hasMore) {
+      // 1. Cargar una página de productos
+      const {products: productos, total, inactives} = await this.productosRepository.findByMerchantWithPagination(
+        merchantId ?? 1,
+        {
+          limit: pageSize,
+          offset,
+          hours: hours
+        }
+      );
+      totalProds += total;
+      totalActives += productos.length;
+      totalInactives += inactives.length;
+
+      console.log(total);
+      if (productos.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // totalProcessed += productos.length;
+      offset += pageSize;
+
+    }
+
+    return {
+      totalProducts: totalProds,
+      activos: totalActives,
+      inactivos: totalInactives
+    }
+  }
+
+
+  @post('/productos/sync-to-shopify/{merchant_id}')
+  async syncronizeProducts2Merchants(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Opciones para la sincronización por lotes y MERCHANTS',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              batchSize: {type: 'number', default: 100},
+              limit: {type: 'number', default: 1, nullable: true},
+              hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    totalProducts: number;
+    batchesCreated: number;
+    message: string;
+  }> {
+
+    // this.logger.log(`Test log: Just Testing`);
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+
+    //------ BLOCK generar BATCHES DE PRODUCTOS A SYNCRONIZAR ------------
+
+    const batchSize = options?.batchSize ?? 100;
+    const hours = options?.hours ?? 72;
+    const pageSize = 200; // Productos a cargar por consulta
+    let offset = 0;
+    let totalProcessed = 0;
+    let totalBatches = 0;
+
+    // Procesamiento paginado para todos los productos
+    let hasMore = true;
+
+    while (hasMore) {
+      // 1. Cargar una página de productos
+      const {products: productos, total, inactives} = await this.productosRepository.findByMerchantWithPagination(
+        merchantId ?? 1,
+        {
+          limit: pageSize,
+          offset,
+          hours: hours
+        }
+      );
+      // console.log(productos.length)
+      // console.log('Inactives', inactives)
+      for (const inactiveId of inactives) {
+        try {
+          await this.shopifyService.updateProductStatus(inactiveId, "draft", {});
+        } catch (error) {
+          console.log(`Error changing status to DRAFT on ${inactiveId}`);
+        }
+
+        // console.log('DOIT DRAFT', doitDraft);
+      }
+
+      console.log('📅 Total products to procces', total)
+
+      if (productos.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // 2. Transformar y procesar en lotes pequeños
+      const shopifyProducts = productos.map(p => ({...this.mapToShopifyFormat(p, p.unidadId), merchantId: merchantId}));
+      console.log('📌 IDs:', JSON.stringify(productos.map(p => p.unidadId)));
+      const batches = this.createBatches(shopifyProducts, batchSize);
+
+      // 3. Enviar a la cola
+      if (queueService) {
+        for (const batch of batches) {
+          await queueService.addProductBatchToSync(batch, credentials);
+          totalBatches++;
+        }
+      }
+
+      totalProcessed += productos.length;
+      offset += pageSize;
+
+      // Liberar memoria
+      console.log(`🧹 liberando memoria`)
+      await new Promise(resolve => setImmediate(resolve));
+      console.log(`⌛ delay para (total: ${total}, offet: ${offset}, batch:${totalBatches}, totalProcessed: ${totalProcessed})`)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+
+    return {
+      totalProducts: totalProcessed,
+      batchesCreated: totalBatches,
+      message: `🎇 Sincronización masiva iniciada. ${totalProcessed} productos en ${totalBatches} lotes de ${batchSize}.`,
+    };
+
+    //--------------------------------------------------------------------
+
+  }
+
+
+
+  //---------- BLOCK sincro ENDPOINTS-------------------------------------------
+  /*
+
   @post('/productos/find-prod-not-in-shopify')
   async findProdNotInShopify(
     @requestBody({
@@ -118,8 +318,6 @@ export class ProductosController {
       message: `Sincronización masiva iniciada. ${totalProcessed} productos en ${totalBatches} lotes de ${batchSize}.`,
     };
   }
-
-
 
   //--------------------------------------------------
   @post('/productos/sync-batch-to-shopify-new')
@@ -232,18 +430,8 @@ export class ProductosController {
     };
   }
 
-  // Función auxiliar para crear lotes
-  private createBatches(products: ProductData[], batchSize: number): ProductData[][] {
-    const batches: ProductData[][] = [];
-    for (let i = 0; i < products.length; i += batchSize) {
-      batches.push(products.slice(i, i + batchSize));
-    }
-    return batches;
-  }
+
   //--------------------------------------------------
-
-
-
 
   // endpoint para sincronizacion en lotes
   @post('/productos/sync-batch-to-shopify', {
@@ -353,7 +541,6 @@ export class ProductosController {
     };
   }
 
-
   @get('/productos/{id}')
   @response(200, {
     description: 'Productos model instance',
@@ -370,6 +557,42 @@ export class ProductosController {
     return d;
   }
 
+  @post('/productos/{id}/sync-to-shopify', {
+    responses: {
+      '200': {
+        description: 'Sincronizar producto con Shopify',
+        content: {'application/json': {schema: {'x-ts-type': 'Object'}}},
+      },
+    },
+  })
+  async syncToShopify(
+    @param.path.number('id') id: number,
+  ): Promise<object> {
+    // 1. Obtener el producto de tu base de datos
+    const producto = await this.productosRepository.findByIdMine(id);
+
+
+
+    // 2. Transformar a formato Shopify
+    const shopifyProduct = this.mapToShopifyFormat(producto, id);
+    console.log('Producto', shopifyProduct)
+    // 3. Sincronizar con Shopify
+    const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
+
+    //  4. Actualizar el producto con el ID de Shopify
+
+    const error = {};//await this.updateUnidadesData(result, id);
+
+
+
+    return {...result, error};
+  }
+  */
+
+  //------END BLOCK ------------------------------------------------------------
+
+
+  //--------- BLOCK endpoints CRUD ---------------------------------------------
   /*
 
   @post('/productos')
@@ -441,8 +664,6 @@ export class ProductosController {
     return this.productosRepository.updateAll(productos, where);
   }
 
-
-
   @patch('/productos/{id}')
   @response(204, {
     description: 'Productos PATCH success',
@@ -478,42 +699,31 @@ export class ProductosController {
   })
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.productosRepository.deleteById(id);
-  }*/
+  }
+    */
+
+  //--------- END BLOCK --------------------------------------------------------
 
 
+  //---BLOCK funciones auxiliares ----------------------------------------------
 
-  @post('/productos/{id}/sync-to-shopify', {
-    responses: {
-      '200': {
-        description: 'Sincronizar producto con Shopify',
-        content: {'application/json': {schema: {'x-ts-type': 'Object'}}},
-      },
-    },
-  })
-  async syncToShopify(
-    @param.path.number('id') id: number,
-  ): Promise<object> {
-    // 1. Obtener el producto de tu base de datos
-    const producto = await this.productosRepository.findByIdMine(id);
-
-
-
-    // 2. Transformar a formato Shopify
-    const shopifyProduct = this.mapToShopifyFormat(producto, id);
-    console.log('Producto', shopifyProduct)
-    // 3. Sincronizar con Shopify
-    const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
-
-    //  4. Actualizar el producto con el ID de Shopify
-
-    const error = {};//await this.updateUnidadesData(result, id);
-
-
-
-    return {...result, error};
+  /**
+   * Función auxiliar para crear lotes
+   */
+  private createBatches(products: ProductData[], batchSize: number): ProductData[][] {
+    const batches: ProductData[][] = [];
+    for (let i = 0; i < products.length; i += batchSize) {
+      batches.push(products.slice(i, i + batchSize));
+    }
+    return batches;
   }
 
-
+  /**
+   * actualiza el id de shopify y los datos de imagen sincronizadada en la tabla de unidades
+   * @param result
+   * @param id
+   * @returns
+   */
   public async updateUnidadesData(result: any, id: number): Promise<any> {
     //  4. Actualizar el producto con el ID de Shopify
     let error = {};
@@ -536,16 +746,12 @@ export class ProductosController {
    * Mapea el modelo Productos al formato esperado por Shopify
    */
   private mapToShopifyFormat(producto: Productos, id: number): ProductData {
-    // const url = producto?.extraData.syncro_data?.url ?? null;
 
-    // console.log(url)
-    // console.log(producto.imagenWeb);
-    // console.log(producto.extraData)
     return {
       title: producto.titulo ?? '',
       description: producto.descripcion,
-      vendor: 'Euroinnova',
-      productType: 'Curso',
+      vendor: producto?.extraData?.vendor ?? 'Euroinnova',
+      productType: producto?.extraData?.product_type ?? 'Curso',
       // status: producto?.publicado ? 'active' : 'draft',
       // variants: [{
       price: producto.precio ?? 0,
@@ -560,7 +766,9 @@ export class ProductosController {
       seo: producto.descripcionSeo ? {
         description: producto.descripcionSeo ?? undefined
       } : undefined,
-      syncro_data: producto?.extraData.syncro_data ?? undefined
+      syncro_data: producto?.extraData.syncro_data ?? undefined,
+      shopifyId: producto?.extraData?.shopify_id,
+      unidadId: id
     };
   }
 
@@ -574,6 +782,24 @@ export class ProductosController {
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
 
       return [
+        {
+          namespace: 'custom',
+          key: 'mylxp_url',
+          value: producto.extraData.url_mylxp ?? "",
+          type: 'url'
+        },
+        {
+          namespace: 'custom',
+          key: 'plataforma_online_url',
+          value: producto.extraData.plat_online_url ?? "",
+          type: 'url'
+        },
+        {
+          namespace: 'custom',
+          key: 'plataforma_online_nombre',
+          value: producto.extraData.plat_online_name ?? "",
+          type: 'single_line_text_field'
+        },
         {
           namespace: 'custom',
           key: 'coleccion_shopify',
@@ -792,6 +1018,9 @@ export class ProductosController {
     }
 
   }
+
+
+  //--------- END BLOCK --------------------------------------------------------
 
 
 }

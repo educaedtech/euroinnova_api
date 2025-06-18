@@ -2,6 +2,7 @@
 import {inject} from '@loopback/core';
 import {get, post, requestBody, response} from '@loopback/rest';
 import fetch from 'node-fetch';
+import {ShopifyCredentials} from '../services/merchant-credentials.service';
 import {ShopifyService} from '../services/shopify.service';
 
 interface Collection {
@@ -42,6 +43,10 @@ export class GeneralController {
     public shopifyService: ShopifyService,
   ) { }
 
+  //ajustando credenciales del merchant al que se accede
+  setShopifyServiceCredentials = (credentials: ShopifyCredentials) => {
+    this.shopifyService.setCredentials(credentials);
+  }
 
   @get('/general/api/ip-info')
   @response(200, {
@@ -389,7 +394,7 @@ export class GeneralController {
       }`;
 
       const variables = {
-        id: collection.id,
+        id: collection?.id,
         productIds: [`gid://shopify/Product/${productId}`],
       };
 
@@ -406,7 +411,7 @@ export class GeneralController {
         console.log('🔥 Error', data.data.collectionAddProducts.userErrors);
       } else {
         console.log(
-          `✅ Producto ${productId} agregado a la colección (${collection.title})`,
+          `✅ Producto ${productId} agregado a la colección (${collection?.title})`,
         );
       }
     } catch (error) {
@@ -417,8 +422,8 @@ export class GeneralController {
     }
   }
 
-  public async findOrCreateCollection(collectionName: string): Promise<Collection> {
-    console.log(`ℹ️ search or create collection [ ${collectionName} ]`);
+  public async findOrCreateCollection(collectionName: string): Promise<Collection | null> {
+    // console.log(`ℹ️ search or create collection [ ${collectionName} ]`);
     // Buscar la colección por nombre
     const query = `query GetCollection($query: String!) {
        collections(first: 1, query: $query) {
@@ -438,12 +443,17 @@ export class GeneralController {
       query: `title:${collectionName}`,
     };
 
+
+    // console.log(this.shopifyService.config);
+
     const response5 = await this.shopifyService.makeShopifyRequest(query, variables);
     const data: ShopifyResponse<{
       collections: {nodes: Collection[]};
     }> = response5;
 
     if (data.data?.collections.nodes.length > 0) {
+      // retorna la coleccion porque ya existe
+      console.log(`ℹ️  Collection (EXIST) => ${collectionName}`)
       return data.data.collections.nodes[0];
     }
 
@@ -484,14 +494,13 @@ export class GeneralController {
       };
     }> = createResponse;
 
-
-
     if (createData.data?.collectionCreate.userErrors.length > 0) {
       throw new Error(
         JSON.stringify(createData.data.collectionCreate.userErrors),
       );
     }
 
+    console.log(`✅ Collection (CREATED) => ${collectionName}`)
     return createData.data?.collectionCreate.collection ?? null;
   }
 

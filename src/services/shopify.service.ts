@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
-import {inject, injectable} from '@loopback/core';
+import {BindingScope, inject, injectable} from '@loopback/core';
 import fetch from 'node-fetch';
 import {AreasRepository, CreditosProductosRepository, EscuelasRepository, FacultadesRepository, IdiomasRepository, InstitucionesEducativasRepository, NivelesEducativosRepository, ProductosRepository} from '../repositories';
+import {LoggerService} from './logger.service';
+import {ShopifyCredentials} from './merchant-credentials.service';
 
 // Interfaces para los tipos
 interface ShopifyConfig {
@@ -10,19 +12,16 @@ interface ShopifyConfig {
   apiVersion: string;
   accessToken: string;
 }
-
 interface LocationData {
   location_id: string;
   quantity: number;
 }
-
 export interface Metafield {
   namespace: string;
   key: string;
   value: string;
   type?: string;
 }
-
 export interface ProductData {
   title: string;
   description?: string;
@@ -40,72 +39,101 @@ export interface ProductData {
   },
   syncro_data?: {url: string, idShopi: string};
   status?: string;
+  merchantId?: number;
+  shopifyId?: string;
+  unidadId: number;
 }
-
-export interface CreditsInterface {
+export interface GenInterface {
   id: number;
   codigo: string;
   nombre: string;
   descripcion?: string;
 }
-
 interface SyncError {
   creditId: number;
   error: string;
 }
-
 export interface SyncResults {
   created: number;
   updated: number;
   skipped: number;
   errors: SyncError[];
 }
-
-
 export interface AreasInterface {
   id_area: number;
   titulo: string;
 }
-
 export interface FacultadesInterface {
   id_facultad: number;
   nombre: string;
   logo?: string;
 }
-
 export interface EscuelasInterface {
   id_escuela: number;
   nombre: string;
   logo?: string;
 }
-
 export interface InstitucionesEducativasInterface {
   id_institucion_educativa: number;
   nombre: string;
   logo?: string;
 }
-
 export interface NivelesEducativosInterface {
   id_nivel_educativo: number;
   nombre: string;
   logo?: string;
   shopify_id?: string;
 }
-
 export interface IdiomasInterface {
   id_idioma: number;
   idioma: string;
   prefijo_idioma?: string,
   shopify_id?: string;
 }
-@injectable({tags: {key: 'services.ShopifyService'}})
+
+@injectable({tags: {key: 'services.ShopifyService'}, scope: BindingScope.SINGLETON})
 export class ShopifyService {
+
+  private credentials: ShopifyCredentials;
+  public config: ShopifyConfig = {storeUrl: '', accessToken: '', apiVersion: ''};
+
+  private publications = [];
+  async setCredentials(credentials: ShopifyCredentials) {
+    this.credentials = credentials;
+    this.config.storeUrl = this.credentials.url;
+    this.config.accessToken = this.credentials.token;
+    this.config.apiVersion = this.credentials.apiVersion;
+
+    const channelsQuery = `{
+            publications(first: 10) {
+              edges {
+                node {
+                  id
+                  name
+                }
+              }
+            }
+          }`;
+
+    const channelsResponse = await this.makeShopifyRequest(channelsQuery, {});
+
+    this.publications = channelsResponse.data.publications.edges.map((edge: {node: {id: any;};}) => ({
+      "publicationId": edge.node.id, // ID del canal
+      "publishDate": new Date().toISOString()// Opcional
+    }))
+
+  }
+
   constructor(
-    @inject('config.shopify')
-    private config: ShopifyConfig,
     @inject('repositories.ProductosRepository')
     private productosRepo: ProductosRepository,
-  ) { }
+    @inject('services.LoggerService')
+    private logger: LoggerService
+  ) {
+    console.log('LogStream available:', !!this.logger.logStream);
+    console.log('ShopifyService using LoggerService instance #:',
+      (this.logger as any).instanceId);
+  }
 
   async createShopifyProduct(product: ProductData): Promise<{
     sku: string;
@@ -117,73 +145,77 @@ export class ShopifyService {
   }> {
     try {
 
+      const {merchantId, shopifyId, unidadId} = product;
+      console.log('UNIDAD', unidadId)
 
-      const channelsQuery = `{
-            publications(first: 10) {
+      let gid = shopifyId ?? undefined;
+      let prdl = null;
+      if (!shopifyId) {
+        this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
+
+        try {
+          // buscamos el producto en shopify para determinar si ya existe via SKU
+          const searchQueryBySKU = `query GetProductBySku {
+            products(first: 1, query: "sku:${product.sku}") {
               edges {
                 node {
                   id
-                  name
-                }
-              }
-            }
-          }`;
-
-      const channelsResponse = await this.makeShopifyRequest(channelsQuery, {});
-
-      const publications = channelsResponse.data.publications.edges.map((edge: {node: {id: any;};}) => ({
-        "publicationId": edge.node.id, // ID del canal
-        "publishDate": new Date().toISOString()// Opcional
-      }))
-
-      // buscamos el producto en shopify para determinar si ya existe via SKU
-      const searchQuery = `query GetProductBySku {
-        products(first: 1, query: "sku:${product.sku}") {
-          edges {
-            node {
-              id
-              title
-              handle
-              variants(first: 1) {
-                edges {
-                  node {
-                    id
-                    sku
+                  title
+                  media(first:1){
+                    nodes{
+                        id
+                        preview{
+                            image{
+                                url
+                                altText
+                            }
+                        }
+                    }
+                  }
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        id
+                        sku
+                      }
+                    }
                   }
                 }
               }
             }
-          }
-        }
-      }`;
+          }`;
+          const searchResponse = await this.makeShopifyRequest(searchQueryBySKU, {});
+          // console.log('searchResponse', searchResponse.data.products.edges)
+          prdl = searchResponse.data.products.edges[0]?.node ?? null;
 
-      const searchResponse = await this.makeShopifyRequest(searchQuery, {});
-      // console.log(searchResponse);
-      let gid = undefined;
-      let prdl = {handle: ''};
-      try {
-        gid = searchResponse.data.products.edges[0].node.id;
-        prdl = searchResponse.data.products.edges[0].node;
-      } catch (error) {
-        gid = undefined
+          gid = prdl?.id ?? undefined;
+          // console.log('N3', gid)
+
+        } catch (error) {
+          this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
+          gid = undefined;
+        }
+      }
+      else {
+        this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId} sku:${product.sku}`);
       }
 
       const productInput = {
         id: gid,
+        status: 'ACTIVE',
         title: product.tituloComercial ? this.escapeGraphQLString(product.tituloComercial) : this.escapeGraphQLString(product.title),
-        handle: prdl?.handle === product.handle ? undefined : product.handle,
+        handle: shopifyId ? undefined : product.handle,
         descriptionHtml: `<p>${this.escapeHtml(product.description ?? 'Descripción del producto')}</p>`,
         productType: product.productType ?? 'Curso',
         vendor: product.vendor ?? 'Euroinnova',
         productOptions: [],
         variants: [],
         seo: product.seo,
-        // productPublications: publications,
         metafields: product.metafields ? product.metafields.filter(m => m.value !== '').map(meta => {
           let processedValue = meta.value;
 
+          // Eliminar saltos de línea y múltiples espacios
           if (meta.type === 'single_line_text_field') {
-            // Eliminar saltos de línea y múltiples espacios
             processedValue = meta.value.replace(/\r?\n|\r/g, ' ').replace(/\s+/g, ' ').trim();
           }
 
@@ -195,7 +227,9 @@ export class ShopifyService {
           };
         }) : []
       };
+      this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`)
 
+      // create|update product
       const createQuery = `
         mutation productSet($input:ProductSetInput!) {
           productSet(input: $input) {
@@ -223,67 +257,67 @@ export class ShopifyService {
           }
         }
       `;
-
-      // Cuando hagas la petición:
       const variables = {
         input: productInput
       };
 
-      console.log(Math.random())
-
       const createResponse = await this.makeShopifyRequest(createQuery, variables);
 
+      //validando errores en el proceso de creacion|actualzacion de producto
       if (
         createResponse.errors ||
         createResponse.data.productSet.userErrors.length > 0
       ) {
-        console.error(JSON.stringify(createResponse));
+        // console.error('',JSON.stringify(createResponse));
         const errors =
           createResponse.errors || createResponse.data.productSet.userErrors;
-
+        const e1 = `⛔ Failed to create Shopify product ${unidadId}`;
+        const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`
+        this.logger.error(e1)
+        this.logger.error(e2)
         return {
           sku: product.sku,
           success: false,
-          shopifyId: 'Failed to create Shopify product',
-          variantId: errors.map((e: {message: unknown;}) => e.message).join(', '),
+          shopifyId: e1,
+          variantId: e2,
           inventoryItemId: '',
           imagen: undefined,
         };
 
       }
 
+      // obteniendo el producto creado|actualziado
       const newProduct = createResponse.data.productSet.product;
       const variant = newProduct.variants.edges[0].node;
 
       //si tiene imagen subirla shopify y asignarsela al producto
       let imgWeb = undefined;
       let nDataImg = undefined;
-      // console.log('imagenWeb', product.imagenWeb)
-      if (product.imagenWeb !== undefined) {
-        // console.log('paso')
-        imgWeb = await this.uploadImageToShopify(product.imagenWeb, newProduct.id, product.syncro_data);
+
+      let synD = null;
+      if (product.imagenWeb && product.imagenWeb !== product?.syncro_data?.url) {
+
+        this.logger.log(`↗️ Subiendo imagen de producto ${unidadId}`);
+        imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
 
         if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
           nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
         }
+        synD = nDataImg?.url !== undefined ? JSON.stringify(nDataImg) : null;
+      }
 
-        // console.log('work', imgWeb, nDataImg)
-        //  4. Actualizar el producto,syncro_data (unidades) con el ID de Shopify
-        const idCurso = parseInt(product.metafields?.find(f => f.key === 'id_curso')?.value ?? '-1')
-        console.log('idCurso', idCurso);
-        let error = {};
-        try {
+      //  Actualizar el producto, syncro_data (unidades) con el ID de Shopify
+      try {
+        await this.productosRepo.execute(`INSERT INTO references_data_unidad
+                                                (unidad_id,merchant_id,shopify_id, syncro_data)
+                                              VALUES
+                                                (?,?,?,?)
+                                              ON DUPLICATE KEY UPDATE
+                                                shopify_id=VALUES(shopify_id),
+                                                syncro_data = VALUES(syncro_data);`, [unidadId, merchantId, newProduct.id, synD]);
 
-          if (nDataImg?.url !== undefined)
-            await this.productosRepo.execute(`UPDATE unidades SET shopify_id=?, syncro_data=? WHERE id=?;`, [newProduct.id, JSON.stringify(nDataImg), idCurso]);
-          else
-            await this.productosRepo.execute(`UPDATE unidades SET shopify_id=? WHERE id=?;`, [newProduct.id, idCurso]);
-
-        } catch (errorMsg) {
-          error = errorMsg;
-          console.error('Error actualizando tabla: unidades', error);
-        }
-
+      } catch (errorMsg) {
+        this.logger.error(`🔥 ERROR on table: reference_data_unidad (${unidadId}): ` + errorMsg?.message);
       }
 
       // 2. Actualizar variante con SKU y precio
@@ -314,8 +348,15 @@ export class ShopifyService {
       await this.makeShopifyRequest(updateVariantQuery, {});
 
       // making public on channels
-      await this.publishProd(gid, publications);
+      try {
+        const pubChannels = await this.publishProd(gid, this.publications);
+        if (!pubChannels.success)
+          this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + pubChannels?.errors?.map(e => e?.message).join('/'));
+      } catch (error) {
+        this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + error?.message);
+      }
 
+      this.logger.log(`✅ Producto ID: ${unidadId}, sku:${product.sku} (SUCCESFULY PROCCES)`);
 
       return {
         sku: product.sku,
@@ -326,18 +367,15 @@ export class ShopifyService {
         imagen: nDataImg
       };
     } catch (error) {
-      console.error('Error in createShopifyProduct:', error);
+      this.logger.error(`🔥 Error on create/update Product SKU: ${product.sku}: ` + error?.message);
       return {
         sku: product.sku,
         success: false,
-        shopifyId: 'Failed to create Shopify product',
-        variantId: error.message,
+        shopifyId: '🔥 Failed to create/update Shopify product',
+        variantId: `🪲 ${error.message}`,
         inventoryItemId: '',
         imagen: undefined,
       };
-      // throw new HttpErrors.InternalServerError(
-      //   `Failed to create Shopify product: ${error.message}`,
-      // );
     }
   }
 
@@ -504,10 +542,8 @@ export class ShopifyService {
           }
         `;
 
-
-
   //para la seccion de creditos
-  async syncronizeCredits(creditos: CreditsInterface[], repo: CreditosProductosRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeCredits(creditos: GenInterface[], repo: CreditosProductosRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -621,7 +657,18 @@ export class ShopifyService {
             results.created++;
           }
 
-          await repo.execute(`UPDATE creditos_productos SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'creditos_productos',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -643,7 +690,7 @@ export class ShopifyService {
   }
 
   //para la seccion de escuelas
-  async syncronizeEscuelas(areasOnDB: EscuelasInterface[], repo: EscuelasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeEscuelas(areasOnDB: EscuelasInterface[], repo: EscuelasRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -657,8 +704,6 @@ export class ShopifyService {
         type: "escuelas"
       });
 
-      // console.log('exist', existingResponse.data.metaobjects.edges[0]);
-
       // 2. Mapear los existentes por su id_credito para búsqueda rápida
       const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
 
@@ -671,8 +716,6 @@ export class ShopifyService {
           });
         }
       });
-
-      // console.log('existingResponse', existingMetaobjectsMap)
 
       // 3. Procesar cada area
       for (const escuela of areasOnDB) {
@@ -764,7 +807,18 @@ export class ShopifyService {
             results.created++;
           }
 
-          await repo.execute(`UPDATE escuelas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'escuelas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -795,7 +849,7 @@ export class ShopifyService {
   }
 
   //para la seccion de creditos
-  async syncronizeAreas(areasOnDB: AreasInterface[], repo: AreasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeAreas(areasOnDB: AreasInterface[], repo: AreasRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -804,12 +858,11 @@ export class ShopifyService {
     };
 
     try {
+
       // 1. Obtener TODOS los metaobjects existentes de una sola vez
       const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
         type: "area"
       });
-
-      // console.log('exist', existingResponse.data.metaobjects.edges[0]);
 
       // 2. Mapear los existentes por su id_credito para búsqueda rápida
       const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
@@ -823,8 +876,6 @@ export class ShopifyService {
           });
         }
       });
-
-
 
       // 3. Procesar cada area
       for (const area of areasOnDB) {
@@ -883,7 +934,6 @@ export class ShopifyService {
             }
 
           } else {
-            // console.log('No Entro');
             // 6. Crear nueva area si no existe
             const createMutation = `
                 mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
@@ -915,8 +965,19 @@ export class ShopifyService {
 
             results.created++;
           }
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'areas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
-          await repo.execute(`UPDATE areas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -928,13 +989,7 @@ export class ShopifyService {
           });
         }
 
-
-
-
       }
-
-
-
 
     } catch (error) {
       results.errors.push({
@@ -946,9 +1001,8 @@ export class ShopifyService {
     return results;
   }
 
-
   //para la seccion de facultades
-  async syncronizeFacultades(facultadesData: FacultadesInterface[], repo: FacultadesRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeFacultades(facultadesData: FacultadesInterface[], repo: FacultadesRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -1064,8 +1118,19 @@ export class ShopifyService {
 
             results.created++;
           }
-          // console.log(`UPDATE facultades SET shopify_id=? WHERE id=?;`, shopifyIdUpdate, idInstDB)
-          await repo.execute(`UPDATE facultades SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'facultades',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
 
           // Pequeña pausa para evitar rate limiting
@@ -1091,7 +1156,7 @@ export class ShopifyService {
   }
 
   //para la seccion de Instituciones educativas
-  async syncronizeInstitucionesEducativas(institutionsData: InstitucionesEducativasInterface[], repo: InstitucionesEducativasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeInstitucionesEducativas(institutionsData: InstitucionesEducativasInterface[], repo: InstitucionesEducativasRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -1208,7 +1273,18 @@ export class ShopifyService {
             results.created++;
           }
 
-          await repo.execute(`UPDATE instituciones_educativas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'instituciones_educativas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -1232,11 +1308,8 @@ export class ShopifyService {
     return results;
   }
 
-
-
-
   //para la seccion de NIveles Educativos
-  async syncronizeNivelesEducativos(nivelesEduData: NivelesEducativosInterface[], repo: NivelesEducativosRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeNivelesEducativos(nivelesEduData: NivelesEducativosInterface[], repo: NivelesEducativosRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -1262,8 +1335,6 @@ export class ShopifyService {
           });
         }
       });
-
-      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada institucion
       for (const fac of nivelesEduData) {
@@ -1353,7 +1424,18 @@ export class ShopifyService {
             results.created++;
           }
 
-          await repo.execute(`UPDATE niveles_educativos SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'niveles_educativos',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -1366,7 +1448,6 @@ export class ShopifyService {
       }
 
 
-
     } catch (error) {
       results.errors.push({
         creditId: -1,
@@ -1377,9 +1458,8 @@ export class ShopifyService {
     return results;
   }
 
-
   //para la seccion de Idiomas
-  async syncronizeIdiomas(idioomasEduData: IdiomasInterface[], repo: IdiomasRepository): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
+  async syncronizeIdiomas(idioomasEduData: IdiomasInterface[], repo: IdiomasRepository, merchantId: number = 1): Promise<{created: number; updated: number; skipped: number; errors: any[]}> {
     const results: SyncResults = {
       created: 0,
       updated: 0,
@@ -1390,7 +1470,7 @@ export class ShopifyService {
     try {
       // 1. Obtener TODOS los metaobjects existentes de una sola vez
       const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
-        type: "idiomas_curso"
+        type: "idiomas_del_curso"
       });
 
       // 2. Mapear los existentes por su id_institucion_educativa para búsqueda rápida
@@ -1405,8 +1485,6 @@ export class ShopifyService {
           });
         }
       });
-
-      // console.log('existingResponse', JSON.stringify(existingMetaobjectsMap))
 
       // 3. Procesar cada institucion
       for (const fac of idioomasEduData) {
@@ -1496,7 +1574,18 @@ export class ShopifyService {
             results.created++;
           }
 
-          await repo.execute(`UPDATE idiomas SET shopify_id=? WHERE id=?;`, [shopifyIdUpdate, idInstDB]);
+          // ----- BLOCK insertar referencia en BD -------
+          try {
+            await repo.execute(`INSERT INTO references_data (
+                                  referenceable_id,
+                                  referenceable_type,
+                                  merchant_id,
+                                  shopify_id
+                              ) VALUES (?,'idiomas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+          } catch (error) {
+            console.log('🔥 ERROR: ', error.message)
+          }
+          //------ END BLOCK ------------------------------
 
           // Pequeña pausa para evitar rate limiting
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -1519,7 +1608,6 @@ export class ShopifyService {
 
     return results;
   }
-
 
   // publicar producto
   async publishProd(idProd: any, channels: any): Promise<{success: boolean; errors: any[]}> {
@@ -1585,5 +1673,39 @@ export class ShopifyService {
 
 
   }
+
+
+  // Actualizar producto con nuevo precio
+  async updateProductStatus(id: string, status: string, variables?: object) {
+    try {
+
+      const query = `mutation ActivateProduct {
+                  productSet(
+                    synchronous: true,
+                    input: {
+                      id: "${id}",
+                      status: ${status === "active" ? "ACTIVE" : "DRAFT"},
+                    }
+                  ) {
+                    product {
+                      id
+                      title
+                      status
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }`;
+      const createResponse2 = await this.makeShopifyRequest(
+        query,
+        (variables = {})
+      );
+      return createResponse2;
+    } catch (error) {
+      return error;
+    }
+  };
 
 }

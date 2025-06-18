@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 // src/services/queue.service.ts
 import {BindingScope, inject} from '@loopback/context';
 import {injectable, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
 import {Job, Queue} from 'bull';
 import {queueConfig} from '../config/queue.config';
+import {ShopifyCredentials} from './merchant-credentials.service';
 import {ProductData, ShopifyService} from './shopify.service';
 import Bull = require('bull')
 
@@ -12,15 +14,17 @@ import Bull = require('bull')
 export class QueueService implements LifeCycleObserver {
   public productSyncQueue: Queue;
 
+
   constructor(
     @inject('services.ShopifyService')
-    private shopifyService: ShopifyService,
-
+    private shopifyService: ShopifyService
   ) {
+    console.log('ON QUEUS')
     this.productSyncQueue = new Bull('product-sync', {
       redis: queueConfig.redis,
       limiter: queueConfig.limiter,
       settings: {
+        drainDelay: 100,
         lockDuration: 300000, // 5 minutos para procesar un job
         stalledInterval: 30000, // Verificar jobs estancados cada 30 segundos
         maxStalledCount: 3, // Reintentar jobs estancados máximo 3 veces
@@ -54,6 +58,13 @@ export class QueueService implements LifeCycleObserver {
     this.productSyncQueue.on('failed', (job: Job, error: Error) => {
       console.error(`Job ${job.id} failed`, error);
     });
+
+    this.productSyncQueue.on('uncaughtException', (error) => {
+      console.error('Uncaught Exception:', error);
+    });
+    this.productSyncQueue.on('unhandledRejection', (error) => {
+      console.error('Unhandled Rejection:', error);
+    });
   }
 
   async addProductsToSync(products: ProductData[]): Promise<void> {
@@ -77,25 +88,30 @@ export class QueueService implements LifeCycleObserver {
   }
 
   //-------new methods--------
-  async addProductBatchToSync(batch: ProductData[]): Promise<void> {
+  async addProductBatchToSync(batch: ProductData[], credenciales: ShopifyCredentials): Promise<void> {
 
     await this.productSyncQueue.add('sync-product', {
       batch, // Enviamos el array completo
-      batchId: `batch-${Date.now()}`
+      batchId: `batch-${Date.now()}`,
+      credenciales
     }, {
       attempts: 3,
       backoff: {type: 'fixed', delay: 5000}
     });
   }
 
-  private setupQueueProcessor() {
-    this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => { // 2 = concurrencia
+  private async setupQueueProcessor() {
+
+    this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => {
       try {
-        const {batch, batchId} = job.data;
+        const {batch, batchId, credenciales} = job.data;
+
+        this.shopifyService.setCredentials(credenciales);
         const results = [];
 
         for (const product of batch) {
-          // console.log(product);
+          // await new Promise(resolve => setTimeout(resolve, 100));
+
           const result = await this.shopifyService.createShopifyProduct(product);
 
           // actualziando tabla unidades

@@ -515,6 +515,7 @@ export class Productos extends Entity {
 
 export type ProductosRelations = Productos & {
   institucionesEducativasIds?: string[];
+  merchantId?: number
 };
 
 export type ProductosWithRelations = Productos & ProductosRelations;

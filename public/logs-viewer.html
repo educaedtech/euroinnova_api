@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Monitor de Logs en Tiempo Real</title>
+    <style>
+      body {
+        font-family: monospace;
+        margin: 0;
+        padding: 20px;
+        background: #222;
+        color: #0f0;
+      }
+      #logs {
+        white-space: pre-wrap;
+      }
+      .error {
+        color: #f55;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Logs en Tiempo Real</h1>
+    <div id="logs"></div>
+
+    <script>
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws-logs`;
+      const ws = new WebSocket(wsUrl);
+      const logsElement = document.getElementById('logs');
+
+      // Verificación de conexión
+      ws.onopen = () => {
+        console.log('Conexión WebSocket establecida');
+        logsElement.innerHTML +=
+          '<div>[Sistema] Conectado al servidor de logs</div>';
+      };
+
+      // Manejo de mensajes
+      ws.onmessage = event => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Mensaje recibido:', data); // Depuración
+
+          const logElement = document.createElement('div');
+          logElement.textContent = data.data;
+
+          if (data.data.includes('ERROR')) {
+            logElement.className = 'error';
+          }
+
+          logsElement.appendChild(logElement);
+          logsElement.scrollTop = logsElement.scrollHeight;
+        } catch (error) {
+          console.error('Error al procesar mensaje:', error);
+        }
+      };
+
+      // Manejo de errores
+      ws.onerror = error => {
+        console.error('Error en WebSocket:', error);
+        logsElement.innerHTML += `<div class="error">[Sistema] Error de conexión: ${error.message}</div>`;
+      };
+
+      // Reconexión automática si se cierra
+      ws.onclose = () => {
+        console.log('Conexión WebSocket cerrada');
+        logsElement.innerHTML +=
+          '<div>[Sistema] Desconectado del servidor</div>';
+        setTimeout(() => window.location.reload(), 5000);
+      };
+    </script>
+  </body>
+</html>

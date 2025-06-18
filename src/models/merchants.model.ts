@@ -72,6 +72,33 @@ export class Merchants extends Entity {
   })
   email?: string;
 
+  @property({
+    type: 'string',
+    jsonSchema: {nullable: true},
+    length: 65535,
+    generated: false,
+    mysql: {columnName: 'url_shopify', dataType: 'text', dataLength: 65535, dataPrecision: null, dataScale: null, nullable: 'Y', generated: false},
+  })
+  urlShopify?: string;
+
+  @property({
+    type: 'string',
+    jsonSchema: {nullable: true},
+    length: 65535,
+    generated: false,
+    mysql: {columnName: 'token_shopify', dataType: 'text', dataLength: 65535, dataPrecision: null, dataScale: null, nullable: 'Y', generated: false},
+  })
+  tokenShopify?: string;
+
+  @property({
+    type: 'string',
+    jsonSchema: {nullable: true},
+    length: 65535,
+    generated: false,
+    mysql: {columnName: 'api_version_shopify', dataType: 'text', dataLength: 65535, dataPrecision: null, dataScale: null, nullable: 'Y', generated: false},
+  })
+  apiVersionShopify?: string;
+
   // Define well-known properties here
 
   // Indexer property to allow additional data

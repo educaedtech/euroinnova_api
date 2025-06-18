@@ -1,26 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
+  repository
 } from '@loopback/repository';
 import {
-  del,
-  get,
-  getModelSchemaRef,
   param,
-  patch,
   post,
-  put,
-  requestBody,
-  response,
+  requestBody
 } from '@loopback/rest';
-import {InstitucionesEducativas} from '../models';
 import {InstitucionesEducativasRepository} from '../repositories';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {InstitucionesEducativasInterface, ShopifyService, SyncResults} from '../services/shopify.service';
 
 export class InstitucionesEducativasController {
@@ -29,25 +19,28 @@ export class InstitucionesEducativasController {
     public institucionesEducativasRepository: InstitucionesEducativasRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
-  @get('/instituciones-educativas/sync-to-shopify')
-  @response(200, {
-    description: 'Sincronize Array of Instituciones Educaivas',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(InstitucionesEducativas, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async syncronizeInstitucionesEducativas(): Promise<{
+  @post('/instituciones-educativas/sync-to-shopify/{merchant_id}')
+  async syncronizeInstitucionesEducativas(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody() dataIN: any
+  ): Promise<{
     syncedData: InstitucionesEducativasInterface[];
     syncResult: SyncResults;
   }> {
     try {
+
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      this.shopifyService.setCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.institucionesEducativasRepository.find();
       const institutionsData = data.map(f => ({id_institucion_educativa: f.id, nombre: f.nombre, logo: f.logo})) as InstitucionesEducativasInterface[];
@@ -59,24 +52,22 @@ export class InstitucionesEducativasController {
       }
 
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeInstitucionesEducativas(institutionsData, this.institucionesEducativasRepository);
-
-      // 4. Logging más informativo
-      // console.log('Sincronización completada:', syncResult);
+      const syncResult = await this.shopifyService.syncronizeInstitucionesEducativas(institutionsData, this.institucionesEducativasRepository, merchantId);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {
-        syncedData: [],// creditosData,
+        syncedData: [],
         syncResult: syncResult
       };
 
     } catch (error) {
       // 6. Manejo centralizado de errores
-      console.error('Error en syncronizeCredits:', error instanceof Error ? error.message : 'Error desconocido');
+      console.error('Error en syncronizeInstitucionesEducativas:', error instanceof Error ? error.message : 'Error desconocido');
       throw error; // Re-lanzar para manejo superior
     }
   }
 
+  /*
   @post('/instituciones-educativas')
   @response(200, {
     description: 'InstitucionesEducativas model instance',
@@ -198,4 +189,5 @@ export class InstitucionesEducativasController {
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.institucionesEducativasRepository.deleteById(id);
   }
+    */
 }

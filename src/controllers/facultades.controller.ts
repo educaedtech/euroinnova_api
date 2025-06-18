@@ -1,26 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject} from '@loopback/core';
 import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
+  repository
 } from '@loopback/repository';
 import {
-  del,
-  get,
-  getModelSchemaRef,
   param,
-  patch,
   post,
-  put,
-  requestBody,
-  response,
+  requestBody
 } from '@loopback/rest';
-import {Facultades} from '../models';
 import {FacultadesRepository} from '../repositories';
+import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {FacultadesInterface, ShopifyService, SyncResults} from '../services/shopify.service';
 import {GeneralController} from './general.controller';
 
@@ -32,32 +22,40 @@ export class FacultadesController {
     public shopifyService: ShopifyService,
     @inject('controllers.GeneralController')
     public generalController: GeneralController,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
 
-  @get('/facultades/sync-to-shopify')
-  @response(200, {
-    description: 'Sincronize Array of Facultades',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(Facultades, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async syncronizeFacultades(): Promise<{
+  @post('/facultades/sync-to-shopify/{merchant_id}')
+  async syncronizeFacultades(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody() dataIN: any
+  ): Promise<{
     syncedData: FacultadesInterface[];
     syncResult: SyncResults;
   }> {
     try {
+
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+      console.log(credentials);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      this.shopifyService.setCredentials(credentials);
+
+      // 2. pasar credenciales al sercio general para la actualizacion de colecciones etc.
+      this.generalController.setShopifyServiceCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.facultadesRepository.find();// as FacultadesInterface[];
       const facultadesData = data.map(f => ({id_facultad: f.id, nombre: f.nombre, logo: f.logo})) as FacultadesInterface[];
 
       // creando Collecciones en caso de que no existan
       const facs2collections = data.map(fc => fc.nombre) as string[];
+      facs2collections.push('FACULTADES');
       for (const element of facs2collections) {
         await this.generalController.findOrCreateCollection(element);
       }
@@ -67,14 +65,9 @@ export class FacultadesController {
         throw new Error('No se encontraron facultades para sincronizar');
       }
 
-
-
-
       // 3. Sincronizar con Shopify
-      const syncResult = await this.shopifyService.syncronizeFacultades(facultadesData, this.facultadesRepository);
+      const syncResult = await this.shopifyService.syncronizeFacultades(facultadesData, this.facultadesRepository, merchantId);
 
-      // 4. Logging más informativo
-      // console.log('Sincronización completada:', syncResult);
 
       // 5. Retornar estructura tipada con ambos conjuntos de datos
       return {
@@ -89,6 +82,7 @@ export class FacultadesController {
     }
   }
 
+  /*
 
   @post('/facultades')
   @response(200, {
@@ -211,4 +205,5 @@ export class FacultadesController {
   async deleteById(@param.path.number('id') id: number): Promise<void> {
     await this.facultadesRepository.deleteById(id);
   }
+    */
 }
