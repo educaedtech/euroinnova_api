@@ -51,8 +51,6 @@ export class ProductosController {
           schema: {
             type: 'object',
             properties: {
-              batchSize: {type: 'number', default: 100},
-              limit: {type: 'number', default: 1, nullable: true},
               hours: {type: 'number', default: 72, nullable: true}
             },
           },
@@ -81,43 +79,27 @@ export class ProductosController {
     // const batchSize = options?.batchSize ?? 100;
     const hours = options?.hours ?? 72;
     const pageSize = 200; // Productos a cargar por consulta
-    let offset = 0;
+    const offset = 0;
     // const totalProcessed = 0;
     // const totalBatches = 0;
 
-    // Procesamiento paginado para todos los productos
-    let hasMore = true;
 
-    let totalProds = 0, totalActives = 0, totalInactives = 0;
-    while (hasMore) {
-      // 1. Cargar una página de productos
-      const {products: productos, total, inactives} = await this.productosRepository.findByMerchantWithPagination(
-        merchantId ?? 1,
-        {
-          limit: pageSize,
-          offset,
-          hours: hours
-        }
-      );
-      totalProds += total;
-      totalActives += productos.length;
-      totalInactives += inactives.length;
 
-      console.log(total);
-      if (productos.length === 0) {
-        hasMore = false;
-        break;
+    // 1. Cargar una página de productos
+    const {total, actives, inactives} = await this.productosRepository.findModfiedByHoursRange(
+      merchantId ?? 1,
+      {
+        limit: pageSize,
+        offset,
+        hours: hours
       }
+    );
 
-      // totalProcessed += productos.length;
-      offset += pageSize;
-
-    }
 
     return {
-      totalProducts: totalProds,
-      activos: totalActives,
-      inactivos: totalInactives
+      totalProducts: total,
+      activos: actives,
+      inactivos: inactives
     }
   }
 

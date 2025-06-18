@@ -80,6 +80,54 @@ export class ProductosRepository extends DefaultCrudRepository<
     };
   }
 
+
+
+  async findModfiedByHoursRange(
+    merchantId: number,
+    options: {
+      limit: number;
+      offset: number;
+      where?: any;
+      hours?: number;
+    }
+  ): Promise<{total: number, actives: number, inactives: number}> {
+
+
+    const unidadesQuery = `
+        SELECT DISTINCT
+          u.id AS unidad_id,
+          um.activo,(
+          SELECT
+            rfu.shopify_id
+          FROM
+            productos.references_data_unidad rfu
+          WHERE
+            rfu.unidad_id = u.id
+            AND rfu.merchant_id = um.merchant_id
+          ) AS shopify_id
+        FROM
+          productos.unidades_merchants um
+          JOIN productos.unidades u ON u.id = um.unidad_id
+          AND um.merchant_id = ?
+          AND u.fecha_actualizacion >= DATE_SUB( NOW(), INTERVAL ? HOUR )
+          LIMIT ? OFFSET ?`;
+
+    const unidades2procces = await this.dataSource.execute(
+      unidadesQuery,
+      [merchantId, options.hours, options.limit, options.offset]
+    );
+    // 3. Extraer los IDs de las unidades
+    const unidadIds = unidades2procces.filter((p: {unidad_id: number, activo: number; shopify_id: string}) => p.activo === 1).map((u: any) => u.unidad_id);
+    // console.log(unidadIds);
+    // 3. Extraer los IDs de las unidades
+    const inactiveIds = unidades2procces.filter((p: {unidad_id: number, activo: number; shopify_id: string}) => p.activo === 0).map((u: any) => u.shopify_id);
+
+
+    return {total: unidades2procces.length, actives: unidadIds.length, inactives: inactiveIds.length}
+
+  }
+
+
   /**
  * Encuentra productos relacionados con un merchant específico y activos con paginación
  * @param merchantId ID del merchant
