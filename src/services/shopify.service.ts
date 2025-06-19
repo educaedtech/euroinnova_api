@@ -130,8 +130,8 @@ export class ShopifyService {
     @inject('services.LoggerService')
     private logger: LoggerService
   ) {
-    console.log('LogStream available:', !!this.logger.logStream);
-    console.log('ShopifyService using LoggerService instance #:',
+    console.log('📝 LogStream available:', !!this.logger.logStream);
+    console.log('🔢 ShopifyService using LoggerService instance #:',
       (this.logger as any).instanceId);
   }
 
@@ -297,7 +297,7 @@ export class ShopifyService {
       let synD = null;
       if (product.imagenWeb && product.imagenWeb !== product?.syncro_data?.url) {
 
-        this.logger.log(`↗️ Subiendo imagen de producto ${unidadId}`);
+        this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
         imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
 
         if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
@@ -349,7 +349,7 @@ export class ShopifyService {
 
       // making public on channels
       try {
-        const pubChannels = await this.publishProd(gid, this.publications);
+        const pubChannels = await this.publishProd(newProduct.id, this.publications);
         if (!pubChannels.success)
           this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + pubChannels?.errors?.map(e => e?.message).join('/'));
       } catch (error) {

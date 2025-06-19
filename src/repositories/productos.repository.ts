@@ -141,7 +141,7 @@ export class ProductosRepository extends DefaultCrudRepository<
       where?: any;
       hours?: number;
     }
-  ): Promise<{products: ProductosWithRelations[], total: number, inactives: string[]}> {
+  ): Promise<{products: {unidadId: number, merchantId: number}[] /*ProductosWithRelations[]*/, total: number, inactives: string[]}> {
 
 
     const unidadesQuery = `
@@ -183,7 +183,8 @@ export class ProductosRepository extends DefaultCrudRepository<
     const productosConRelaciones = await Promise.all(
       unidadIds.map(async (p: any) => {
         try {
-          return await this.findByIdMine(p, null, {merchantId});
+          // return await this.findByIdMine(p, null, {merchantId});
+          return {unidadId: p, merchantId};
         } catch (error) {
           console.error(`Error al buscar producto ${p}:`, error.message);
           return null; // O un objeto de error personalizado
@@ -275,7 +276,6 @@ export class ProductosRepository extends DefaultCrudRepository<
   ): Promise<ProductosWithRelations> {
 
     const {merchantId} = options;
-
 
     try {
       // Obtener el producto base SIN incluir propiedades no mapeadas

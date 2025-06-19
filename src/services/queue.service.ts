@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 // src/services/queue.service.ts
-import {BindingScope, inject} from '@loopback/context';
+import {BindingScope} from '@loopback/context';
 import {injectable, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
 import {Job, Queue} from 'bull';
+import fetch from 'node-fetch';
 import {queueConfig} from '../config/queue.config';
 import {ShopifyCredentials} from './merchant-credentials.service';
-import {ProductData, ShopifyService} from './shopify.service';
+import {ProductData} from './shopify.service';
 import Bull = require('bull')
 
 @injectable({scope: BindingScope.SINGLETON})
@@ -16,8 +17,8 @@ export class QueueService implements LifeCycleObserver {
   // public cronJobQueue: Queue;
 
   constructor(
-    @inject('services.ShopifyService')
-    private shopifyService: ShopifyService
+    // @inject('services.ShopifyService')
+    // private shopifyService: ShopifyService
   ) {
 
     this.productSyncQueue = new Bull('product-sync', {
@@ -100,9 +101,9 @@ export class QueueService implements LifeCycleObserver {
   }
 
   //-------new methods--------
-  async addProductBatchToSync(batch: ProductData[], credenciales: ShopifyCredentials): Promise<void> {
+  async addProductBatchToSync(batch: {unidadId: number, merchantId: number}[] /*ProductData[]*/, credenciales: ShopifyCredentials): Promise<void> {
 
-    await this.productSyncQueue.add('sync-product', {
+    this.productSyncQueue.add('sync-product', {
       batch, // Enviamos el array completo
       batchId: `batch-${Date.now()}`,
       credenciales
@@ -112,31 +113,55 @@ export class QueueService implements LifeCycleObserver {
     });
   }
 
-  private async setupQueueProcessor() {
+  async proccessProdHttp(merchantId: number, productId: number) {
+    try {
+      console.log('in HTTP request')
+      const baseUrl = `https://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
+      const endpoint = `/productos/syncronize/${merchantId}/${productId}`;
 
+      const response = await fetch(`${baseUrl}${endpoint}`, {
+        method: "POST", headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }, body: JSON.stringify({})
+      });
+      return response;
+    } catch (error) {
+      console.error('Error en QUUEUE HTTP job:', error);
+      throw error;
+    }
+
+  }
+
+
+  private async setupQueueProcessor() {
 
     this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => {
       try {
-        const {batch, batchId, credenciales} = job.data;
+        console.log('Entro', Math.random())
+        const {batch, batchId/*, credenciales*/} = job.data;
 
-        this.shopifyService.setCredentials(credenciales);
+        // this.shopifyService.setCredentials(credenciales);
         const results = [];
 
         for (const product of batch) {
           // await new Promise(resolve => setTimeout(resolve, 100));
 
-          const result = await this.shopifyService.createShopifyProduct(product);
+          const {unidadId, merchantId} = product;
+          console.log(unidadId, merchantId)
+          // const result = await this.shopifyService.createShopifyProduct(product);
+          const result = await this.proccessProdHttp(merchantId, unidadId);
 
           // actualziando tabla unidades
-          const error = {};
+          // const error = {};
 
-          results.push({
+          results.push(result/*{
             productSku: product.sku,
             shopifyId: result.shopifyId,
             variantId: result.variantId,
             success: result.success,
             error
-          });
+          }*/);
         }
 
         return {

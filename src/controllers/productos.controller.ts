@@ -39,6 +39,50 @@ export class ProductosController {
     private merchantCredentials: MerchantCredentialsService,
   ) { }
 
+  //sincronizando 1 producto en 1 mercado
+  @post('/productos/syncronize/{merchant_id}/{product_id}')
+  async syncProdOnMerchant(
+    @param.path.number('merchant_id') merchantId: number,
+    @param.path.number('product_id') productId: number,
+    @requestBody({
+      description: 'Opciones para la sincronización de un producto por merchant',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              // hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    // @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    sku: string;
+    success: boolean;
+    shopifyId: string;
+    variantId: string;
+    inventoryItemId: string;
+    imagen?: object;
+  }> {
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+    const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
+    const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
+    console.log(shopifyProduct);
+
+    const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
+
+    return result;
+  }
 
   @post('/productos/cants-prods-2-sync/{merchant_id}')
   async cantsProds2Sync(
@@ -127,7 +171,6 @@ export class ProductosController {
     await this.shopifyService.setCredentials(credentials);
     //--------- END BLOCK -----------------------------------
 
-
     //------ BLOCK generar BATCHES DE PRODUCTOS A SYNCRONIZAR ------------
 
     const batchSize = options?.batchSize ?? 100;
@@ -154,6 +197,7 @@ export class ProductosController {
       // console.log('Inactives', inactives)
       for (const inactiveId of inactives) {
         try {
+          this.logger.log(`ℹ️ Changing status to DRAFT for (${inactiveId})`);
           await this.shopifyService.updateProductStatus(inactiveId, "draft", {});
         } catch (error) {
           console.log(`Error changing status to DRAFT on ${inactiveId}`);
@@ -170,13 +214,15 @@ export class ProductosController {
       }
 
       // 2. Transformar y procesar en lotes pequeños
-      const shopifyProducts = productos.map(p => ({...this.mapToShopifyFormat(p, p.unidadId), merchantId: merchantId}));
+      // const shopifyProducts = productos.map(p => ({...this.mapToShopifyFormat(p, p.unidadId), merchantId: merchantId}));
       console.log('📌 IDs:', JSON.stringify(productos.map(p => p.unidadId)));
-      const batches = this.createBatches(shopifyProducts, batchSize);
-
+      const batches = this.createBatches(productos/*shopifyProducts*/, batchSize);
+      console.log('BATCHES', batches)
       // 3. Enviar a la cola
       if (queueService) {
+
         for (const batch of batches) {
+          console.log('adding batch')
           await queueService.addProductBatchToSync(batch, credentials);
           totalBatches++;
         }
@@ -202,7 +248,6 @@ export class ProductosController {
     //--------------------------------------------------------------------
 
   }
-
 
 
   //---------- BLOCK sincro ENDPOINTS-------------------------------------------
@@ -680,8 +725,8 @@ export class ProductosController {
   /**
    * Función auxiliar para crear lotes
    */
-  private createBatches(products: ProductData[], batchSize: number): ProductData[][] {
-    const batches: ProductData[][] = [];
+  private createBatches(products: {unidadId: number, merchantId: number}[] /*ProductData[]*/, batchSize: number): /*ProductData[]*/ {unidadId: number, merchantId: number}[][] {
+    const batches: /*ProductData[]*/{unidadId: number, merchantId: number}[][] = [];
     for (let i = 0; i < products.length; i += batchSize) {
       batches.push(products.slice(i, i + batchSize));
     }
