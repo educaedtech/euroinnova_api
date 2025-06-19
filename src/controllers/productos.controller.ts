@@ -77,7 +77,7 @@ export class ProductosController {
 
     const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
     const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
-    console.log(shopifyProduct);
+    // console.log(shopifyProduct);
 
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
 
@@ -200,7 +200,7 @@ export class ProductosController {
           this.logger.log(`ℹ️ Changing status to DRAFT for (${inactiveId})`);
           await this.shopifyService.updateProductStatus(inactiveId, "draft", {});
         } catch (error) {
-          console.log(`Error changing status to DRAFT on ${inactiveId}`);
+          this.logger.error(`⛔ Error changing status to DRAFT on ${inactiveId}`);
         }
 
         // console.log('DOIT DRAFT', doitDraft);
@@ -217,12 +217,10 @@ export class ProductosController {
       // const shopifyProducts = productos.map(p => ({...this.mapToShopifyFormat(p, p.unidadId), merchantId: merchantId}));
       console.log('📌 IDs:', JSON.stringify(productos.map(p => p.unidadId)));
       const batches = this.createBatches(productos/*shopifyProducts*/, batchSize);
-      console.log('BATCHES', batches)
       // 3. Enviar a la cola
       if (queueService) {
 
         for (const batch of batches) {
-          console.log('adding batch')
           await queueService.addProductBatchToSync(batch, credentials);
           totalBatches++;
         }

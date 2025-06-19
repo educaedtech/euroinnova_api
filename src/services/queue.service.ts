@@ -148,7 +148,7 @@ export class QueueService implements LifeCycleObserver {
           // await new Promise(resolve => setTimeout(resolve, 100));
 
           const {unidadId, merchantId} = product;
-          console.log(unidadId, merchantId)
+          // console.log(unidadId, merchantId)
           // const result = await this.shopifyService.createShopifyProduct(product);
           const result = await this.proccessProdHttp(merchantId, unidadId);
 
