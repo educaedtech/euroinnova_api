@@ -23,26 +23,25 @@ export class LogWebSocketServer {
     });
 
     this.wss.on('connection', (ws) => {
-      console.log('Nuevo cliente conectado'); // Verifica en consola del servidor
+      console.log('👤 Nuevo cliente conectado'); // Verifica en consola del servidor
 
       // Mensaje de prueba inmediato
       ws.send(JSON.stringify({type: 'log', data: '[Servidor] Conexión establecida'}));
 
       const subscription = this.loggerService.logStream.subscribe(message => {
-        console.log('Enviando log a cliente:', message); // Depuración
         if (ws.readyState === ws.OPEN) {
           ws.send(JSON.stringify({type: 'log', data: message}));
         }
       });
 
       ws.on('close', () => {
-        console.log('Cliente desconectado'); // Depuración
+        console.log('🥺 Cliente desconectado'); // Depuración
         subscription.unsubscribe();
       });
     });
 
     this.wss.on('error', (error) => {
-      this.loggerService.error(`WebSocket error: ${error.message}`);
+      this.loggerService.error(`⛔ WebSocket error: ${error.message}`);
     });
   }
 }

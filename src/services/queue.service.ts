@@ -17,8 +17,8 @@ export class QueueService implements LifeCycleObserver {
   // public cronJobQueue: Queue;
 
   constructor(
-    // @inject('services.ShopifyService')
-    // private shopifyService: ShopifyService
+    // @inject('services.LoggerService')
+    // private logger: LoggerService
   ) {
 
     this.productSyncQueue = new Bull('product-sync', {
@@ -115,28 +115,43 @@ export class QueueService implements LifeCycleObserver {
 
   async proccessProdHttp(merchantId: number, productId: number) {
     try {
-      console.log('in HTTP request')
+      console.log('🔄 [proccessProdHttp] Iniciando solicitud HTTP...', {merchantId, productId});
+
       const baseUrl = `https://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
       const endpoint = `/productos/syncronize/${merchantId}/${productId}`;
+      const url = `${baseUrl}${endpoint}`;
 
-      const response = await fetch(`${baseUrl}${endpoint}`, {
-        method: "POST", headers: {
+      console.log('🔗 URL:', url.replace(/:([^\/]+)@/, ':*****@')); // Oculta la contraseña en logs
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }, body: JSON.stringify({})
+          'Accept': 'application/json',
+        },
       });
-      return response;
-    } catch (error) {
-      console.error('Error en QUUEUE HTTP job:', error);
-      throw error;
-    }
 
+      console.log('📡 [proccessProdHttp] Respuesta recibida. Status:', response.status);
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'No se pudo leer el cuerpo del error');
+        throw new Error(`HTTP ${response.status} - ${errorBody}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [proccessProdHttp] Respuesta exitosa:', JSON.stringify(data, null, 2));
+
+      return data;
+    } catch (error) {
+      console.error('❌ [proccessProdHttp] Error:', error.message);
+      throw error; // Propaga el error para que Bull lo reintente
+    }
   }
 
 
   private async setupQueueProcessor() {
 
-    this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => {
+    await this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => {
       try {
         console.log('Entro', Math.random())
         const {batch, batchId/*, credenciales*/} = job.data;
