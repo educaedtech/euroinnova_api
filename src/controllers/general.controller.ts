@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {inject} from '@loopback/core';
-import {get, post, requestBody, response} from '@loopback/rest';
+import {get, param, post, requestBody, response} from '@loopback/rest';
 import fetch from 'node-fetch';
-import {ShopifyCredentials} from '../services/merchant-credentials.service';
+import {MerchantCredentialsService, ShopifyCredentials} from '../services/merchant-credentials.service';
 import {ShopifyService} from '../services/shopify.service';
 
 interface Collection {
@@ -41,11 +41,13 @@ export class GeneralController {
   constructor(
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('services.MerchantCredentialsService')
+    private merchantCredentials: MerchantCredentialsService,
   ) { }
 
   //ajustando credenciales del merchant al que se accede
-  setShopifyServiceCredentials = (credentials: ShopifyCredentials) => {
-    this.shopifyService.setCredentials(credentials);
+  setShopifyServiceCredentials = async (credentials: ShopifyCredentials) => {
+    await this.shopifyService.setCredentials(credentials);
   }
 
   @get('/general/api/ip-info')
@@ -102,7 +104,7 @@ export class GeneralController {
   /**
    * Endpoint para recibir el webhook y gestionar colecciones de productos
    */
-  @post('/general/product-collections')
+  @post('/general/product-collections/{merchant_id}')
   @response(200, {
     description: 'Set Product Collections',
     content: {
@@ -114,16 +116,12 @@ export class GeneralController {
     },
   })
   async productCollections(
+    @param.path.number('merchant_id') merchantId: number,
     @requestBody({
       content: {
         'application/json': {
           schema: {
-            type: 'object',
-            // properties: {
-            //   id: {type: 'string'},
-            //   tags: {type: 'string'},
-            // },
-            // required: ['id', 'tags'],
+            type: 'object'
           },
         },
       },
@@ -131,13 +129,10 @@ export class GeneralController {
     product: Product,
   ): Promise<{message: string}> {
     try {
-      // console.log('Prod', product);
       const productId = product.id;
-      // const arrTags = this.parseTags(product.tags);
-      // console.log('TAGS', arrTags)
 
       // Obtener metadatos y colecciones del producto
-      const {metaTitles, collectionTitles} = await this.getProductCollectionsData(productId);
+      const {metaTitles, collectionTitles} = await this.getProductCollectionsData(productId, merchantId);
 
       // Determinar colecciones a modificar
       const {collectionsToRemove, collectionsToAdd} = this.determineCollectionsToUpdate(
@@ -167,10 +162,20 @@ export class GeneralController {
       .filter(Boolean);
   }
 
-  private async getProductCollectionsData(productId: string): Promise<{
+  private async getProductCollectionsData(productId: string, merchantId: number): Promise<{
     metaTitles: string[];
     collectionTitles: Collection[];
   }> {
+
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+
     const query = `query ProductMetafield($namespace: String!, $key: String!, $ownerId: ID!) {
       product(id: $ownerId) {
         collections(first: 10) {
@@ -442,7 +447,6 @@ export class GeneralController {
     const variables = {
       query: `title:${collectionName}`,
     };
-
 
     // console.log(this.shopifyService.config);
 

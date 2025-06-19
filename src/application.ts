@@ -20,6 +20,7 @@ import {MySequence} from './sequence';
 import {QueueService} from './services/queue.service';
 export {ApplicationConfig};
 
+import {CronService} from './services/cronjob.service';
 import {LoggerService} from './services/logger.service';
 import {ShopifyService} from './services/shopify.service';
 import {LogWebSocketServer} from './websocket/logs.websocket.server';
@@ -120,11 +121,7 @@ export class EuroinnovaApiApplication extends BootMixin(
       }
     });
 
-
-
-    // Registrar el servicio
-    // this.service(ShopifyService);
-    // this.service(QueueService);
+    this.service(CronService);
 
 
     this.dataSource(EuroProductosDataSource);
@@ -171,7 +168,8 @@ export class EuroinnovaApiApplication extends BootMixin(
 
   async setupQueues() {
     const queueService = await this.get('services.QueueService') as QueueService;
-    const bullRouter = await setupBullBoard(queueService);
+    const cronService = await this.get('services.CronService') as CronService;
+    const bullRouter = await setupBullBoard(queueService, cronService);
 
     this.mountExpressRouter('/admin/queues', bullRouter);
     console.log(`Queue Monitor is running at /admin/queues`);

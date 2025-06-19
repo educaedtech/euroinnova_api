@@ -6,14 +6,16 @@ import {ExpressAdapter} from '@bull-board/express';
 import {Queue} from 'bull';
 // import {queueConfig} from '../config/queue.config';
 
+import {CronService} from '../services/cronjob.service';
 import {QueueService} from '../services/queue.service';
+
 
 // Elimina la creación de syncQueue aquí (se moverá al QueueService)
 let queues: Queue[] = [];
 
-export async function setupBullBoard(queueService: QueueService) {
+export async function setupBullBoard(queueService: QueueService, cronServiceQueue: CronService) {
   // Obtiene las colas del QueueService
-  queues = [queueService.productSyncQueue];
+  queues = [queueService.productSyncQueue, cronServiceQueue.cronJobQueue];
 
   const serverAdapter = new ExpressAdapter();
 
@@ -37,7 +39,7 @@ export async function setupBullBoard(queueService: QueueService) {
     }, 1800000);
 
     queue
-      .on('error', error => console.error('Error en cola:', error))
+      .on('error', error => console.error('⛔ Error en cola:', error))
       .on('completed', job => console.log(`✅ Job ${job.id} completado`))
       .on('failed', (job, err) => console.error(`❌ Job ${job.id} fallado`, err));
   });

@@ -13,13 +13,13 @@ import Bull = require('bull')
 @lifeCycleObserver('queue')
 export class QueueService implements LifeCycleObserver {
   public productSyncQueue: Queue;
-
+  // public cronJobQueue: Queue;
 
   constructor(
     @inject('services.ShopifyService')
     private shopifyService: ShopifyService
   ) {
-    console.log('ON QUEUS')
+
     this.productSyncQueue = new Bull('product-sync', {
       redis: queueConfig.redis,
       limiter: queueConfig.limiter,
@@ -36,18 +36,29 @@ export class QueueService implements LifeCycleObserver {
     });
 
     this.setupQueueListeners();
+    // this.setupCronJobs();
     this.setupQueueProcessor();
+
   }
 
   // Métodos requeridos por LifeCycleObserver
   async start(): Promise<void> {
     // Lógica de inicio si es necesaria
     console.log('QueueService started');
+
+    // Verificar que las colas estén listas
+    await Promise.all([
+      this.productSyncQueue.isReady(),
+      // this.cronJobQueue.isReady()
+    ]);
+
+    // console.log('⏲️ Cron jobs inicializados');
+
   }
 
   async stop(): Promise<void> {
     await this.productSyncQueue.close();
-    console.log('QueueService stopped');
+    console.log('⛔ QueueService stopped');
   }
 
   private setupQueueListeners() {
@@ -60,11 +71,12 @@ export class QueueService implements LifeCycleObserver {
     });
 
     this.productSyncQueue.on('uncaughtException', (error) => {
-      console.error('Uncaught Exception:', error);
+      console.error('❓ Uncaught Exception:', error);
     });
     this.productSyncQueue.on('unhandledRejection', (error) => {
-      console.error('Unhandled Rejection:', error);
+      console.error('❓ Unhandled Rejection:', error);
     });
+
   }
 
   async addProductsToSync(products: ProductData[]): Promise<void> {
@@ -101,6 +113,7 @@ export class QueueService implements LifeCycleObserver {
   }
 
   private async setupQueueProcessor() {
+
 
     this.productSyncQueue.process('sync-product', queueConfig.workerOptions.concurrency, async (job: Job) => {
       try {

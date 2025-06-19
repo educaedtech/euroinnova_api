@@ -57,14 +57,12 @@ export class ProductosController {
         },
       },
     }) options?: SyncBatchRequest,
-    @inject('services.QueueService') queueService?: QueueService,
+    // @inject('services.QueueService') queueService?: QueueService,
   ): Promise<{
     totalProducts: number;
     activos: number;
     inactivos: number;
   }> {
-
-    // this.logger.log(`Test log: Just Testing`);
     // -------- BLOCK ajustes de credenciales ----------------
     // 1. Obtener credenciales del merchant
     const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
@@ -73,17 +71,10 @@ export class ProductosController {
     await this.shopifyService.setCredentials(credentials);
     //--------- END BLOCK -----------------------------------
 
-
-    //------ BLOCK generar BATCHES DE PRODUCTOS A SYNCRONIZAR ------------
-
-    // const batchSize = options?.batchSize ?? 100;
+    //------ BLOCK  ------------
     const hours = options?.hours ?? 72;
     const pageSize = 200; // Productos a cargar por consulta
     const offset = 0;
-    // const totalProcessed = 0;
-    // const totalBatches = 0;
-
-
 
     // 1. Cargar una página de productos
     const {total, actives, inactives} = await this.productosRepository.findModfiedByHoursRange(
@@ -94,7 +85,6 @@ export class ProductosController {
         hours: hours
       }
     );
-
 
     return {
       totalProducts: total,
@@ -129,8 +119,6 @@ export class ProductosController {
     batchesCreated: number;
     message: string;
   }> {
-
-    // this.logger.log(`Test log: Just Testing`);
     // -------- BLOCK ajustes de credenciales ----------------
     // 1. Obtener credenciales del merchant
     const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
