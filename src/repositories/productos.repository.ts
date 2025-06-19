@@ -113,7 +113,7 @@ export class ProductosRepository extends DefaultCrudRepository<
 
     const unidades2procces = await this.dataSource.execute(
       unidadesQuery,
-      [merchantId, options.hours, options.limit, options.offset]
+      [merchantId, options.hours]
     );
     // 3. Extraer los IDs de las unidades
     const unidadIds = unidades2procces.filter((p: {unidad_id: number, activo: number; shopify_id: string}) => p.activo === 1).map((u: any) => u.unidad_id);
