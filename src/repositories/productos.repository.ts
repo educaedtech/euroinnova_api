@@ -109,8 +109,7 @@ export class ProductosRepository extends DefaultCrudRepository<
           productos.unidades_merchants um
           JOIN productos.unidades u ON u.id = um.unidad_id
           AND um.merchant_id = ?
-          AND u.fecha_actualizacion >= DATE_SUB( NOW(), INTERVAL ? HOUR )
-          LIMIT ? OFFSET ?`;
+          AND u.fecha_actualizacion >= DATE_SUB( NOW(), INTERVAL ? HOUR )`;
 
     const unidades2procces = await this.dataSource.execute(
       unidadesQuery,
