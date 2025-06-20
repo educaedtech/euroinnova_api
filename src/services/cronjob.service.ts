@@ -97,7 +97,8 @@ export class CronService implements LifeCycleObserver {
         });
 
         if (!response.ok) {
-          console.error(`HTTP error! status: ${response.status}`, response);
+          console.error(`HTTP error! status: ${response.status}`);
+          return {success: false, response}
         }
 
         const data = await response.json();
