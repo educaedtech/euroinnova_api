@@ -9,6 +9,8 @@ export class CronService implements LifeCycleObserver {
   public cronJobQueue: Queue;
   constructor(
   ) {
+
+
     this.cronJobQueue = new Bull('cron-jobs', {
       redis: queueConfig.redis,
       limiter: queueConfig.limiter,
@@ -29,8 +31,9 @@ export class CronService implements LifeCycleObserver {
     this.setupQueueProcessor();
   }
 
+
   private setupCronJobs() {
-    cron.schedule(`${process.env.CRON_JOB_SHEDULE}`, () => {
+    cron.schedule(`${process.env.CRON_JOB_SHEDULE ?? '*/30 * * * *'}`, () => {
       console.log('🏃 Ejecutando cron job...');
       this.cronJobQueue.add('cron-jobs', {
         type: 'scheduled',
@@ -83,14 +86,14 @@ export class CronService implements LifeCycleObserver {
 
     this.cronJobQueue.process('cron-jobs', 1, async (job: Job) => {
       try {
-        const baseUrl = `https://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
+        const baseUrl = `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
         const endpoint = '/productos/cants-prods-2-sync/2';
-
-        const response = await fetch(`${baseUrl}${endpoint}`, {
+        const url = `${baseUrl}${endpoint}`;
+        const response = await fetch(url, {
           method: "POST", headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
-          }, body: JSON.stringify({hours: 18})
+          }, body: JSON.stringify({hours: process.env.CRON_HOURS_SYNC ?? 1})
         });
 
         if (!response.ok) {

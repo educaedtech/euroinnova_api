@@ -117,7 +117,7 @@ export class QueueService implements LifeCycleObserver {
     try {
       console.log('🔄 [proccessProdHttp] Iniciando solicitud HTTP...', {merchantId, productId});
 
-      const baseUrl = `https://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
+      const baseUrl = `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
       const endpoint = `/productos/syncronize/${merchantId}/${productId}`;
       const url = `${baseUrl}${endpoint}`;
 
@@ -147,7 +147,6 @@ export class QueueService implements LifeCycleObserver {
       throw error; // Propaga el error para que Bull lo reintente
     }
   }
-
 
   private async setupQueueProcessor() {
 

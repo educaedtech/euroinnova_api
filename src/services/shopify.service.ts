@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {BindingScope, inject, injectable} from '@loopback/core';
@@ -128,12 +129,15 @@ export class ShopifyService {
     @inject('repositories.ProductosRepository')
     private productosRepo: ProductosRepository,
     @inject('services.LoggerService')
-    private logger: LoggerService
+    private logger: LoggerService,
   ) {
+
     console.log('📝 LogStream available:', !!this.logger.logStream);
     console.log('🔢 ShopifyService using LoggerService instance #:',
       (this.logger as any).instanceId);
+
   }
+
 
   async createShopifyProduct(product: ProductData): Promise<{
     sku: string;

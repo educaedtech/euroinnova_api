@@ -69,15 +69,6 @@ export class EuroinnovaApiApplication extends BootMixin(
       },
     };
 
-    // // Configuración de Shopify
-    // this.bind('config.shopify').to({
-    //   storeUrl: process.env.SHOPIFY_STORE_URL,
-    //   apiVersion: process.env.SHOPIFY_API_VERSION ?? '2025-01',
-    //   accessToken: process.env.SHOPIFY_ACCESS_TOKEN,
-    // });
-
-
-
     this.bind('services.LoggerService').toClass(LoggerService).inScope(BindingScope.SINGLETON);
 
     // Configuración explícita como SINGLETON
@@ -93,6 +84,11 @@ export class EuroinnovaApiApplication extends BootMixin(
         // Forzar que use la misma instancia
         binding.tag('shopify-user');
       });
+    this.service(CronService);
+
+
+    // this.lifeCycleObserver(QueueService);
+    // this.lifeCycleObserver(CronService);
 
     // 2. Configura el WebSocket
     this.bind('ws.server').toClass(LogWebSocketServer);
@@ -121,8 +117,6 @@ export class EuroinnovaApiApplication extends BootMixin(
       }
     });
 
-    this.service(CronService);
-
 
     this.dataSource(EuroProductosDataSource);
     this.repository(ProductosRepository);
@@ -130,10 +124,6 @@ export class EuroinnovaApiApplication extends BootMixin(
     this.setupQueues()
 
     this.getIPData();
-
-
-
-
 
 
   }
