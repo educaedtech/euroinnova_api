@@ -33,11 +33,13 @@ export class CronService implements LifeCycleObserver {
 
 
   private setupCronJobs() {
-    cron.schedule(`${process.env.CRON_JOB_SHEDULE ?? '*/30 * * * *'}`, () => {
+    //
+    cron.schedule(`${process.env.CRON_JOB_SHEDULE ?? '*/5 * * * * *'}`, () => {
       console.log('🏃 Ejecutando cron job...');
       this.cronJobQueue.add('cron-jobs', {
         type: 'scheduled',
-        time: new Date().toISOString()
+        time: new Date().toISOString(),
+        merchantId: 2
       }, {
         jobId: `cron-${Date.now()}`, // ID único
         removeOnComplete: 20,       // Eliminar al completar
@@ -45,7 +47,21 @@ export class CronService implements LifeCycleObserver {
         // Evita jobs duplicados
         preventParsingData: true
       }).then(() => console.log('➕ Job añadido a la cola'))
-        .catch(err => console.error('⛔ Error añadiendo job:', err));;
+        .catch(err => console.error('⛔ Error añadiendo job:', err));
+
+
+      this.cronJobQueue.add('cron-jobs', {
+        type: 'scheduled',
+        time: new Date().toISOString(),
+        merchantId: 1
+      }, {
+        jobId: `cron-${Date.now()}`, // ID único
+        removeOnComplete: 20,       // Eliminar al completar
+        removeOnFail: 5,            // Eliminar si falla
+        // Evita jobs duplicados
+        preventParsingData: true
+      }).then(() => console.log(`➕ Job añadido a la cola`))
+        .catch(err => console.error('⛔ Error añadiendo job:', err));
     });
   }
 
@@ -84,12 +100,14 @@ export class CronService implements LifeCycleObserver {
 
   private async setupQueueProcessor() {
 
-    this.cronJobQueue.process('cron-jobs', 1, async (job: Job) => {
+    await this.cronJobQueue.process('cron-jobs', 1, async (job: Job) => {
       try {
+        const d = JSON.parse(job.data);
+        // console.log(d.merchantId);
         // 1. Configura URL y autenticación
         const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
         const baseUrl = `${protocol}://${process.env.API_BASE_URL}`;
-        const endpoint = '/productos/cants-prods-2-sync/2';
+        const endpoint = `/productos/sync-to-shopify/${d.merchantId}`;
         const url = `${baseUrl}${endpoint}`;
 
         // 2. Validar y preparar el cuerpo (body)
@@ -108,7 +126,7 @@ export class CronService implements LifeCycleObserver {
         const response = await fetch(url, {
           method: "POST",
           headers,
-          body: JSON.stringify({hours}),
+          body: JSON.stringify({hours, batchSize: 100, limit: 1}),
         });
 
         // 5. Manejar errores HTTP
