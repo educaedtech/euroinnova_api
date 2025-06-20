@@ -86,28 +86,52 @@ export class CronService implements LifeCycleObserver {
 
     this.cronJobQueue.process('cron-jobs', 1, async (job: Job) => {
       try {
-        const baseUrl = `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
+        // 1. Configura URL y autenticación
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+        const baseUrl = `${protocol}://${process.env.API_BASE_URL}`;
         const endpoint = '/productos/cants-prods-2-sync/2';
         const url = `${baseUrl}${endpoint}`;
+
+        // 2. Validar y preparar el cuerpo (body)
+        const hours = parseInt(process.env.CRON_HOURS_SYNC ?? '1');
+        if (isNaN(hours)) throw new Error('CRON_HOURS_SYNC debe ser un número');
+
+        // 3. Configurar headers con autenticación básica
+        const auth = Buffer.from(`${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}`).toString('base64');
+        const headers = {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        };
+
+        // 4. Hacer la petición
         const response = await fetch(url, {
-          method: "POST", headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }, body: JSON.stringify({hours: process.env.CRON_HOURS_SYNC ?? 1})
+          method: "POST",
+          headers,
+          body: JSON.stringify({hours}),
         });
 
+        // 5. Manejar errores HTTP
         if (!response.ok) {
-          console.error(`HTTP error! status: ${response.status}`);
-          return {success: false, response}
+          const errorBody = await response.text().catch(() => 'No se pudo leer el cuerpo del error');
+          console.error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+          return {success: false, status: response.status, error: errorBody};
+        }
+
+        // 6. Validar y parsear la respuesta
+        const contentType = response.headers.get('content-type');
+        if (!contentType?.includes('application/json')) {
+          const text = await response.text();
+          console.error('La respuesta no es JSON:', text);
+          return {success: false, error: 'Respuesta no JSON'};
         }
 
         const data = await response.json();
-        // console.log('Respuesta:', data);
-
-        console.log('🏃 Cron job ejecutado exitosamente:', new Date().toISOString());
+        console.log('✅ Cron job ejecutado exitosamente:', new Date().toISOString());
         return {success: true, data};
+
       } catch (error) {
-        console.error('Error en cron job:', error);
+        console.error('🔥 Error en cron job:', error instanceof Error ? error.message : error);
         throw error;
       }
     });
