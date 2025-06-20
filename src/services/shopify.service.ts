@@ -299,7 +299,7 @@ export class ShopifyService {
       let nDataImg = undefined;
 
       let synD = null;
-      if (product.imagenWeb && product.imagenWeb !== product?.syncro_data?.url) {
+      if (product.imagenWeb && product?.syncro_data?.url === undefined) {
 
         this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
         imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
