@@ -10,8 +10,16 @@
         background: #222;
         color: #0f0;
       }
+      #logs-container {
+        height: 80vh; /* Altura fija para el contenedor */
+        overflow-y: auto; /* Scroll vertical */
+        border: 1px solid #444;
+        padding: 10px;
+      }
       #logs {
         white-space: pre-wrap;
+        margin: 0;
+        padding: 0;
       }
       .error {
         color: #f55;
@@ -20,52 +28,62 @@
   </head>
   <body>
     <h1>Logs en Tiempo Real</h1>
-    <div id="logs"></div>
+    <div id="logs-container">
+      <div id="logs"></div>
+    </div>
 
     <script>
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}/ws-logs`;
       const ws = new WebSocket(wsUrl);
       const logsElement = document.getElementById('logs');
+      const MAX_LOGS = 300; // Límite de logs visibles
 
       // Verificación de conexión
       ws.onopen = () => {
         console.log('Conexión WebSocket establecida');
-        logsElement.innerHTML +=
-          '<div>[Sistema] Conectado al servidor de logs</div>';
+        addLog('[Sistema] Conectado al servidor de logs');
       };
+
+      // Función para añadir logs (arriba y gestionar el límite)
+      function addLog(message, isError = false) {
+        const logElement = document.createElement('div');
+        logElement.textContent = message;
+        if (isError || message.includes('ERROR')) {
+          logElement.className = 'error';
+        }
+
+        // Insertar al principio
+        logsElement.prepend(logElement);
+
+        // Eliminar logs antiguos si se supera el límite
+        if (logsElement.children.length > MAX_LOGS) {
+          logsElement.removeChild(logsElement.lastChild);
+        }
+      }
 
       // Manejo de mensajes
       ws.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
-          console.log('Mensaje recibido:', data); // Depuración
-
-          const logElement = document.createElement('div');
-          logElement.textContent = data.data;
-
-          if (data.data.includes('ERROR')) {
-            logElement.className = 'error';
-          }
-
-          logsElement.appendChild(logElement);
-          logsElement.scrollTop = logsElement.scrollHeight;
+          console.log('Mensaje recibido:', data);
+          addLog(data.data);
         } catch (error) {
           console.error('Error al procesar mensaje:', error);
+          addLog(`[Error] ${error.message}`, true);
         }
       };
 
       // Manejo de errores
       ws.onerror = error => {
         console.error('Error en WebSocket:', error);
-        logsElement.innerHTML += `<div class="error">[Sistema] Error de conexión: ${error.message}</div>`;
+        addLog(`[Sistema] Error de conexión: ${error.message}`, true);
       };
 
-      // Reconexión automática si se cierra
+      // Reconexión automática
       ws.onclose = () => {
         console.log('Conexión WebSocket cerrada');
-        logsElement.innerHTML +=
-          '<div>[Sistema] Desconectado del servidor</div>';
+        addLog('[Sistema] Desconectado del servidor');
         setTimeout(() => window.location.reload(), 5000);
       };
     </script>
