@@ -108,6 +108,7 @@ export class ProductosRepository extends DefaultCrudRepository<
         FROM
           productos.unidades_merchants um
           JOIN productos.unidades u ON u.id = um.unidad_id
+          JOIN productos.productos p ON p.unidad_id = u.id
           AND um.merchant_id = ?
           AND u.fecha_actualizacion >= DATE_SUB( NOW(), INTERVAL ? HOUR )`;
 
@@ -159,6 +160,7 @@ export class ProductosRepository extends DefaultCrudRepository<
         FROM
           productos.unidades_merchants um
           JOIN productos.unidades u ON u.id = um.unidad_id
+          JOIN productos.productos p ON p.unidad_id = u.id
           AND um.merchant_id = ?
           AND u.fecha_actualizacion >= DATE_SUB( NOW(), INTERVAL ? HOUR )
           LIMIT ? OFFSET ?`;
