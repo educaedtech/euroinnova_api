@@ -39,6 +39,51 @@ export class ProductosController {
     private merchantCredentials: MerchantCredentialsService,
   ) { }
 
+  // //sincronizando 1 producto en 1 mercado
+  // @post('/productos/collection-repeated/{merchant_id}')
+  // async collectionsRepeatedOnMerchant(
+  //   @param.path.number('merchant_id') merchantId: number,
+  //   @param.path.number('product_id') productId: number,
+  //   @requestBody({
+  //     description: 'Opciones para la sincronización de un producto por merchant',
+  //     required: false,
+  //     content: {
+  //       'application/json': {
+  //         schema: {
+  //           type: 'object',
+  //           properties: {
+  //             // hours: {type: 'number', default: 72, nullable: true}
+  //           },
+  //         },
+  //       },
+  //     },
+  //   }) options?: SyncBatchRequest,
+  //   // @inject('services.QueueService') queueService?: QueueService,
+  // ): Promise<{
+  //   sku: string;
+  //   success: boolean;
+  //   shopifyId: string;
+  //   variantId: string;
+  //   inventoryItemId: string;
+  //   imagen?: object;
+  // }> {
+  //   // -------- BLOCK ajustes de credenciales ----------------
+  //   // 1. Obtener credenciales del merchant
+  //   const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+  //   // 2. Configurar el servicio Shopify con estas credenciales
+  //   await this.shopifyService.setCredentials(credentials);
+  //   //--------- END BLOCK -----------------------------------
+
+  //   const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
+  //   const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
+  //   // console.log(shopifyProduct);
+
+  //   const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
+
+  //   return result;
+  // }
+
   //sincronizando 1 producto en 1 mercado
   @post('/productos/syncronize/{merchant_id}/{product_id}')
   async syncProdOnMerchant(
@@ -795,6 +840,30 @@ export class ProductosController {
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
 
       return [
+        {
+          namespace: 'custom',
+          key: 'codigo_scorm',
+          value: producto.extraData.cod_scorm ?? "",
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'institucion_educativa_propietaria',
+          value: producto.extraData.inst_educ_propietaria ?? "",
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'subfamilia',
+          value: producto.extraData.subfamilia ?? "",
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
+          key: 'familia',
+          value: producto.extraData.familia ?? "",
+          type: 'single_line_text_field'
+        },
         {
           namespace: 'custom',
           key: 'mylxp_url',

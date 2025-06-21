@@ -464,7 +464,11 @@ export class ProductosRepository extends DefaultCrudRepository<
             (SELECT mylxps.url FROM mylxps WHERE mylxps.id=um.mylxp_id) as url_mylxp,
             po.nombre as plat_online_name,
             po.url as plat_online_url,
-            ( SELECT rfu.shopify_id FROM references_data_unidad rfu WHERE rfu.unidad_id = u.id AND rfu.merchant_id=um.merchant_id) as shopify_id
+            ( SELECT rfu.shopify_id FROM references_data_unidad rfu WHERE rfu.unidad_id = u.id AND rfu.merchant_id=um.merchant_id) as shopify_id,
+             (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
+						(SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id=uf.subfamilia_id AND uf.unidad_id=u.id) as subfamilia,
+						(SELECT ie.nombre as inst_educ_propietaria FROM unidades_instituciones_educativas uie JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id AND uie.unidad_id = u.id AND uie.propietaria=1) as inst_educ_propietaria,
+						'' as cod_scorm
 
           FROM
             productos p
@@ -496,7 +500,7 @@ export class ProductosRepository extends DefaultCrudRepository<
           nivel_educativo_shopify: null,
           idioma_shopify: null
         };
-        const {
+        const {familia, subfamilia, inst_educ_propietaria, cod_scorm,
           url_mylxp,
           plat_online_name,
           plat_online_url,
@@ -520,8 +524,7 @@ export class ProductosRepository extends DefaultCrudRepository<
           creditos_productos_shopify,
           unidad_tiempo
         } = extraData[0] ?? DEFAULT_EXTRADATA;
-        // console.log('shopify_id', shopify_id ?? undefined);
-        producto.extraData = {url_mylxp, plat_online_name, plat_online_url, product_type, vendor, shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
+        producto.extraData = {familia, subfamilia, inst_educ_propietaria, cod_scorm, url_mylxp, plat_online_name, plat_online_url, product_type, vendor, shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
 
         producto.shopifyId = shopify_id ?? undefined;
 

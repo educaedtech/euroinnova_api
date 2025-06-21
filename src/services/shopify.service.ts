@@ -138,6 +138,75 @@ export class ShopifyService {
 
   }
 
+  //funciona para verificar si el producto requiere actualizacion o no
+  private async productNeedsUpdate(productId: string, newData: any): Promise<boolean> {
+    const query = `query GetProductData($id: ID!) {
+    product(id: $id) {
+      title
+      descriptionHtml
+      productType
+      vendor
+      variants(first: 1) {
+        edges {
+          node {
+            price
+            sku
+          }
+        }
+      }
+      metafields(first: 100) {
+        edges {
+          node {
+            namespace
+            key
+            value
+            type
+          }
+        }
+      }
+    }
+  }`;
+
+    const response = await this.makeShopifyRequest(query, {id: productId});
+    const existingProduct = response.data.product;
+
+    // Comparar todos los campos relevantes
+
+
+    if (existingProduct.title !== newData.title) return true;
+    console.log('title');
+    if (existingProduct.descriptionHtml !== (newData.descriptionHtml ?? 'Descripción del producto')) return true;
+    console.log('desc');
+    if (existingProduct.productType !== (newData.productType ?? 'Curso')) return true;
+    console.log('type');
+    if (existingProduct.vendor !== (newData.vendor ?? 'Euroinnova')) return true;
+    console.log('vendor');
+    // Comparar variante
+    const variant = existingProduct.variants.edges[0].node;
+    if (parseFloat(variant.price) !== parseFloat(newData.price)) return true;
+    console.log('price');
+    console.log(variant, newData.sku)
+    if (variant.sku !== newData.sku) return true;
+    console.log('sku');
+
+    // Comparar metafields
+    const existingMetafields = existingProduct.metafields.edges.map((e: any) => e.node);
+    const newMetafields = newData.metafields ?? [];
+
+    if (existingMetafields.length !== newMetafields.length) return true;
+
+    for (const newMeta of newMetafields) {
+      const existingMeta = existingMetafields.find((m: any) =>
+        m.namespace === newMeta.namespace && m.key === newMeta.key);
+
+      if (!existingMeta || existingMeta.value !== newMeta.value || existingMeta.type !== (newMeta.type ?? 'string')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
 
   async createShopifyProduct(product: ProductData): Promise<{
     sku: string;
@@ -148,9 +217,11 @@ export class ShopifyService {
     imagen?: object;
   }> {
     try {
-
       const {merchantId, shopifyId, unidadId} = product;
-      console.log('UNIDAD', unidadId)
+
+
+
+      // console.log('UNIDAD', unidadId)
 
       let gid = shopifyId ?? undefined;
       let prdl = null;
@@ -201,7 +272,7 @@ export class ShopifyService {
         }
       }
       else {
-        this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId} sku:${product.sku}`);
+        this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId}, sku:${product.sku}, ID-Shopi:${shopifyId}`);
       }
 
       const productInput = {
@@ -231,10 +302,20 @@ export class ShopifyService {
           };
         }) : []
       };
+
+
+      let needsUpd = true;
+      if (shopifyId !== undefined || gid !== undefined) {
+        needsUpd = await this.productNeedsUpdate(shopifyId ?? '', {...productInput, price: product.price, sku: product.sku});
+        console.log('NEEDS UPD', shopifyId, needsUpd)
+      }
+
       this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`)
 
-      // create|update product
-      const createQuery = `
+      if (needsUpd) {
+
+        // create|update product
+        const createQuery = `
         mutation productSet($input:ProductSetInput!) {
           productSet(input: $input) {
             product {
@@ -261,58 +342,57 @@ export class ShopifyService {
           }
         }
       `;
-      const variables = {
-        input: productInput
-      };
-
-      const createResponse = await this.makeShopifyRequest(createQuery, variables);
-
-      //validando errores en el proceso de creacion|actualzacion de producto
-      if (
-        createResponse.errors ||
-        createResponse.data.productSet.userErrors.length > 0
-      ) {
-        // console.error('',JSON.stringify(createResponse));
-        const errors =
-          createResponse.errors || createResponse.data.productSet.userErrors;
-        const e1 = `⛔ Failed to create Shopify product ${unidadId}`;
-        const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`
-        this.logger.error(e1)
-        this.logger.error(e2)
-        return {
-          sku: product.sku,
-          success: false,
-          shopifyId: e1,
-          variantId: e2,
-          inventoryItemId: '',
-          imagen: undefined,
+        const variables = {
+          input: productInput
         };
 
-      }
+        const createResponse = await this.makeShopifyRequest(createQuery, variables);
+        //validando errores en el proceso de creacion|actualzacion de producto
+        if (
+          createResponse.errors ||
+          createResponse.data.productSet.userErrors.length > 0
+        ) {
+          console.error('', JSON.stringify(createResponse));
+          const errors =
+            createResponse.errors || createResponse.data.productSet.userErrors;
+          const e1 = `⛔ Failed to create Shopify product ${unidadId}`;
+          const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`
+          this.logger.error(e1)
+          this.logger.error(e2)
+          return {
+            sku: product.sku,
+            success: false,
+            shopifyId: e1,
+            variantId: e2,
+            inventoryItemId: '',
+            imagen: undefined,
+          };
 
-      // obteniendo el producto creado|actualziado
-      const newProduct = createResponse.data.productSet.product;
-      const variant = newProduct.variants.edges[0].node;
-
-      //si tiene imagen subirla shopify y asignarsela al producto
-      let imgWeb = undefined;
-      let nDataImg = undefined;
-
-      let synD = null;
-      if (product.imagenWeb && product?.syncro_data?.url === undefined) {
-
-        this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
-        imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
-
-        if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
-          nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
         }
-        synD = nDataImg?.url !== undefined ? JSON.stringify(nDataImg) : null;
-      }
 
-      //  Actualizar el producto, syncro_data (unidades) con el ID de Shopify
-      try {
-        await this.productosRepo.execute(`INSERT INTO references_data_unidad
+        // obteniendo el producto creado|actualziado
+        const newProduct = createResponse.data.productSet.product;
+        const variant = newProduct.variants.edges[0].node;
+
+        //si tiene imagen subirla shopify y asignarsela al producto
+        let imgWeb = undefined;
+        let nDataImg = undefined;
+
+        let synD = null;
+        if (product.imagenWeb && product?.syncro_data?.url === undefined) {
+
+          this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
+          imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
+
+          if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
+            nDataImg = {url: product.imagenWeb, idShopi: imgWeb?.data?.productCreateMedia?.media[0]?.id};
+          }
+          synD = nDataImg?.url !== undefined ? JSON.stringify(nDataImg) : null;
+        }
+
+        //  Actualizar el producto, syncro_data (unidades) con el ID de Shopify
+        try {
+          await this.productosRepo.execute(`INSERT INTO references_data_unidad
                                                 (unidad_id,merchant_id,shopify_id, syncro_data)
                                               VALUES
                                                 (?,?,?,?)
@@ -320,56 +400,69 @@ export class ShopifyService {
                                                 shopify_id=VALUES(shopify_id),
                                                 syncro_data = VALUES(syncro_data);`, [unidadId, merchantId, newProduct.id, synD]);
 
-      } catch (errorMsg) {
-        this.logger.error(`🔥 ERROR on table: reference_data_unidad (${unidadId}): ` + errorMsg?.message);
-      }
-
-      // 2. Actualizar variante con SKU y precio
-      const updateVariantQuery = `mutation UpdateProductVariants {
-        productVariantsBulkUpdate(
-          productId: "${newProduct.id}",
-          variants: [
-            {
-              id: "${variant.id}",
-              price: "${product.price}",
-              inventoryItem: { sku: "${product.sku}", tracked: true },
-              inventoryPolicy: CONTINUE
-            }
-          ]
-        ) {
-          productVariants {
-            id
-            sku
-            price
-          }
-          userErrors {
-            field
-            message
-          }
+        } catch (errorMsg) {
+          this.logger.error(`🔥 ERROR on table: reference_data_unidad (${unidadId}): ` + errorMsg?.message);
         }
-      }`;
 
-      await this.makeShopifyRequest(updateVariantQuery, {});
+        // 2. Actualizar variante con SKU y precio
+        const updateVariantQuery = `mutation UpdateProductVariants {
+              productVariantsBulkUpdate(
+                productId: "${newProduct.id}",
+                variants: [
+                  {
+                    id: "${variant.id}",
+                    price: "${product.price}",
+                    inventoryItem: { sku: "${product.sku}", tracked: true },
+                    inventoryPolicy: CONTINUE
+                  }
+                ]
+              ) {
+                productVariants {
+                  id
+                  sku
+                  price
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`;
 
-      // making public on channels
-      try {
-        const pubChannels = await this.publishProd(newProduct.id, this.publications);
-        if (!pubChannels.success)
-          this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + pubChannels?.errors?.map(e => e?.message).join('/'));
-      } catch (error) {
-        this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + error?.message);
+        await this.makeShopifyRequest(updateVariantQuery, {});
+
+        // making public on channels
+        try {
+          const pubChannels = await this.publishProd(newProduct.id, this.publications);
+          if (!pubChannels.success)
+            this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + pubChannels?.errors?.map(e => e?.message).join('/'));
+        } catch (error) {
+          this.logger.log(`⛔ Producto ID: ${unidadId}: Error on publisProd: ` + error?.message);
+        }
+
+        this.logger.log(`✅ Producto ID: ${unidadId}, sku:${product.sku} (SUCCESFULY PROCCES)`);
+
+        return {
+          sku: product.sku,
+          success: true,
+          shopifyId: newProduct.id,
+          variantId: variant.id,
+          inventoryItemId: variant.inventoryItem.id,
+          imagen: nDataImg
+        };
+
       }
-
-      this.logger.log(`✅ Producto ID: ${unidadId}, sku:${product.sku} (SUCCESFULY PROCCES)`);
-
-      return {
-        sku: product.sku,
-        success: true,
-        shopifyId: newProduct.id,
-        variantId: variant.id,
-        inventoryItemId: variant.inventoryItem.id,
-        imagen: nDataImg
-      };
+      else {
+        this.logger.error(`✅ Product SKU: ${product.sku}: : does not require an UPDATE`);
+        return {
+          sku: product.sku,
+          success: false,
+          shopifyId: `ℹ️ Product SKU: ${product.sku}: does not require an UPDATE`,
+          variantId: ``,
+          inventoryItemId: '',
+          imagen: undefined,
+        };
+      }
     } catch (error) {
       this.logger.error(`🔥 Error on create/update Product SKU: ${product.sku}: ` + error?.message);
       return {
