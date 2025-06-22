@@ -371,6 +371,20 @@ export class ShopifyService {
         }
 
         // obteniendo el producto creado|actualziado
+
+        if (!createResponse.data?.productSet?.product) {
+          const errorMsg = 'Invalid response structure from Shopify';
+          this.logger.error(errorMsg);
+          return {
+            sku: product.sku,
+            success: false,
+            shopifyId: errorMsg,
+            variantId: JSON.stringify(createResponse),
+            inventoryItemId: '',
+            imagen: undefined,
+          };
+        }
+
         const newProduct = createResponse.data.productSet.product;
         const variant = newProduct.variants.edges[0].node;
 
