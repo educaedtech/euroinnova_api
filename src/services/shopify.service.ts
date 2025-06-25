@@ -139,39 +139,7 @@ export class ShopifyService {
   }
 
   //funciona para verificar si el producto requiere actualizacion o no
-  private async productNeedsUpdate(productId: string, newData: any): Promise<boolean> {
-    const query = `query GetProductData($id: ID!) {
-    product(id: $id) {
-      title
-      descriptionHtml
-      productType
-      vendor
-      variants(first: 1) {
-        edges {
-          node {
-            price
-            sku
-          }
-        }
-      }
-      metafields(first: 100) {
-        edges {
-          node {
-            namespace
-            key
-            value
-            type
-          }
-        }
-      }
-    }
-  }`;
-
-    const response = await this.makeShopifyRequest(query, {id: productId});
-    const existingProduct = response.data.product;
-
-    // Comparar todos los campos relevantes
-
+  private async productNeedsUpdate(existingProduct: any, newData: any): Promise<boolean> {
 
     if (existingProduct.title !== newData.title) return true;
     console.log('title');
@@ -219,23 +187,18 @@ export class ShopifyService {
     try {
       const {merchantId, shopifyId, unidadId} = product;
 
-
-
-      // console.log('UNIDAD', unidadId)
-
       let gid = shopifyId ?? undefined;
       let prdl = null;
-      if (!shopifyId) {
-        this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
+      // if (!shopifyId) {
+      this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
 
-        try {
-          // buscamos el producto en shopify para determinar si ya existe via SKU
-          const searchQueryBySKU = `query GetProductBySku {
+      try {
+        // buscamos el producto en shopify para determinar si ya existe via SKU
+        const searchQueryBySKU = `query GetProductBySku {
             products(first: 1, query: "sku:${product.sku}") {
               edges {
                 node {
                   id
-                  title
                   media(first:1){
                     nodes{
                         id
@@ -247,11 +210,25 @@ export class ShopifyService {
                         }
                     }
                   }
+                  title
+                  descriptionHtml
+                  productType
+                  vendor
                   variants(first: 1) {
                     edges {
                       node {
-                        id
+                        price
                         sku
+                      }
+                    }
+                  }
+                  metafields(first: 100) {
+                    edges {
+                      node {
+                        namespace
+                        key
+                        value
+                        type
                       }
                     }
                   }
@@ -259,21 +236,21 @@ export class ShopifyService {
               }
             }
           }`;
-          const searchResponse = await this.makeShopifyRequest(searchQueryBySKU, {});
-          // console.log('searchResponse', searchResponse.data.products.edges)
-          prdl = searchResponse.data.products.edges[0]?.node ?? null;
+        const searchResponse = await this.makeShopifyRequest(searchQueryBySKU, {});
+        // console.log('searchResponse', searchResponse.data.products.edges)
+        prdl = searchResponse.data.products.edges[0]?.node ?? null;
+        console.log(prdl);
+        gid = prdl?.id ?? undefined;
+        // console.log('N3', gid)
 
-          gid = prdl?.id ?? undefined;
-          // console.log('N3', gid)
-
-        } catch (error) {
-          this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
-          gid = undefined;
-        }
+      } catch (error) {
+        this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
+        gid = undefined;
       }
-      else {
-        this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId}, sku:${product.sku}, ID-Shopi:${shopifyId}`);
-      }
+      // }
+      // else {
+      //   this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId}, sku:${product.sku}, ID-Shopi:${shopifyId}`);
+      // }
 
       const productInput = {
         id: gid,
@@ -305,9 +282,9 @@ export class ShopifyService {
 
 
       let needsUpd = true;
-      if (shopifyId !== undefined || gid !== undefined) {
-        needsUpd = await this.productNeedsUpdate(shopifyId ?? '', {...productInput, price: product.price, sku: product.sku});
-        console.log('NEEDS UPD', shopifyId, needsUpd)
+      if (gid !== undefined) {
+        needsUpd = await this.productNeedsUpdate(prdl, {...productInput, price: product.price, sku: product.sku});
+        console.log('NEEDS UPD', gid, needsUpd)
       }
 
       this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`)
@@ -711,10 +688,22 @@ export class ShopifyService {
 
               // 5. Actualizar si hay cambios
               const updateMutation = `
-                mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                  metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
                     metaobject {
-                      id
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
+
                     }
                     userErrors {
                       field
@@ -725,10 +714,14 @@ export class ShopifyService {
                 }
               `;
 
-              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+              const vars2Upd = {
                 id: existing.id,
+                capabilities: {
+                  publishable: {status: "ACTIVE"}
+                },
                 fields: fields
-              });
+              };
+              const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
               if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
                 throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -847,10 +840,11 @@ export class ShopifyService {
 
             shopifyIdUpdate = existing.id;
             // 4. Verificar si realmente necesita actualización
-            const needsUpdate = fields.some(newField => {
+            let needsUpdate = fields.some(newField => {
               const existingField = existing.fields.find((f: any) => f.key === newField.key);
               return !existingField || existingField.value !== newField.value;
             });
+            needsUpdate = true;
 
             if (!needsUpdate) {
               results.skipped++;
@@ -859,10 +853,22 @@ export class ShopifyService {
 
               // 5. Actualizar si hay cambios
               const updateMutation = `
-                mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                  metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
                     metaobject {
-                      id
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
+
                     }
                     userErrors {
                       field
@@ -873,10 +879,14 @@ export class ShopifyService {
                 }
               `;
 
-              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+              const vars2Upd = {
                 id: existing.id,
+                capabilities: {
+                  publishable: {status: "ACTIVE"}
+                },
                 fields: fields
-              });
+              };
+              const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
               if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
                 throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -999,6 +1009,7 @@ export class ShopifyService {
             {key: "titulo", value: `${area.titulo}`}
           ];
 
+          console.log(JSON.stringify(fields));
           const existing = existingMetaobjectsMap.get(area.id_area.toString());
 
           let shopifyIdUpdate = null;
@@ -1018,10 +1029,22 @@ export class ShopifyService {
 
               // 5. Actualizar si hay cambios
               const updateMutation = `
-                mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                  metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
                     metaobject {
-                      id
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
+
                     }
                     userErrors {
                       field
@@ -1032,10 +1055,14 @@ export class ShopifyService {
                 }
               `;
 
-              const updateResponse = await this.makeShopifyRequest(updateMutation, {
+              const vars2Upd = {
                 id: existing.id,
+                capabilities: {
+                  publishable: {status: "ACTIVE"}
+                },
                 fields: fields
-              });
+              };
+              const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
               if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
                 throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -1064,6 +1091,9 @@ export class ShopifyService {
             const createResponse = await this.makeShopifyRequest(createMutation, {
               metaobject: {
                 type: "area",
+                capabilities: {
+                  publishable: {status: "ACTIVE"}
+                },
                 fields: fields
               }
             });
@@ -1173,24 +1203,40 @@ export class ShopifyService {
 
             // 5. Actualizar si hay cambios
             const updateMutation = `
-                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
-                       metaobject {
-                         id
-                       }
-                       userErrors {
-                         field
-                         message
-                         code
-                       }
-                     }
-                   }
-                 `;
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
+                    metaobject {
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+            const vars2Upd = {
               id: existing.id,
+              capabilities: {
+                publishable: {status: "ACTIVE"}
+              },
               fields: fields
-            });
+            };
+            const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
             if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
               throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -1327,24 +1373,40 @@ export class ShopifyService {
 
             // 5. Actualizar si hay cambios
             const updateMutation = `
-                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
-                       metaobject {
-                         id
-                       }
-                       userErrors {
-                         field
-                         message
-                         code
-                       }
-                     }
-                   }
-                 `;
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
+                    metaobject {
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+            const vars2Upd = {
               id: existing.id,
+              capabilities: {
+                publishable: {status: "ACTIVE"}
+              },
               fields: fields
-            });
+            };
+            const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
             if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
               throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -1478,24 +1540,40 @@ export class ShopifyService {
 
             // 5. Actualizar si hay cambios
             const updateMutation = `
-                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
-                       metaobject {
-                         id
-                       }
-                       userErrors {
-                         field
-                         message
-                         code
-                       }
-                     }
-                   }
-                 `;
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
+                    metaobject {
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+            const vars2Upd = {
               id: existing.id,
+              capabilities: {
+                publishable: {status: "ACTIVE"}
+              },
               fields: fields
-            });
+            };
+            const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
             if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
               throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -1628,24 +1706,40 @@ export class ShopifyService {
 
             // 5. Actualizar si hay cambios
             const updateMutation = `
-                   mutation MetaobjectUpdate($id: ID!, $fields: [MetaobjectFieldInput!]!) {
-                     metaobjectUpdate(id: $id, metaobject: {fields: $fields}) {
-                       metaobject {
-                         id
-                       }
-                       userErrors {
-                         field
-                         message
-                         code
-                       }
-                     }
-                   }
-                 `;
+                mutation MetaobjectUpdate($id: ID!, $capabilities:MetaobjectCapabilityDataInput!,$fields: [MetaobjectFieldInput!]!) {
+                  metaobjectUpdate(id: $id, metaobject: {fields: $fields,capabilities:$capabilities}) {
+                    metaobject {
+                      capabilities {
+                            publishable {
+                            status
+                            }
+                            onlineStore {
+                            templateSuffix
+                            }
+                        }
+                        fields {
+                            key
+                            value
+                        }
 
-            const updateResponse = await this.makeShopifyRequest(updateMutation, {
+                    }
+                    userErrors {
+                      field
+                      message
+                      code
+                    }
+                  }
+                }
+              `;
+
+            const vars2Upd = {
               id: existing.id,
+              capabilities: {
+                publishable: {status: "ACTIVE"}
+              },
               fields: fields
-            });
+            };
+            const updateResponse = await this.makeShopifyRequest(updateMutation, vars2Upd);
 
             if (updateResponse?.data?.metaobjectUpdate?.userErrors?.length > 0) {
               throw new Error(JSON.stringify(updateResponse.data.metaobjectUpdate.userErrors));
@@ -1814,6 +1908,75 @@ export class ShopifyService {
         (variables = {})
       );
       return createResponse2;
+    } catch (error) {
+      return error;
+    }
+  };
+
+
+  // Actualizar cantidad de alumnos han comprado el producto
+  async updateProductStudentsCount(id: string) {
+    try {
+
+      const query = `{
+                product(id:"gid://shopify/Product/${id}"){
+                    title
+                    no_alumnos:metafield(namespace:"custom",key:"numero_de_alumnos"){
+                        value
+                    }
+                }
+            }`;
+      const variables = {};
+      const createResponse2 = await this.makeShopifyRequest(
+        query, variables
+      );
+      // console.log(JSON.stringify(createResponse2))
+      let cantActual = createResponse2?.data?.product?.no_alumnos?.value ?? 0;
+      cantActual++;
+
+      const queryUpd = `mutation UpdateProductWithMetafields($product: ProductUpdateInput!) {
+        productUpdate(product: $product) {
+          userErrors {
+            field
+            message
+          }
+          product {
+            id
+            title
+            handle
+            metafields(first: 10) {
+              edges {
+                node {
+                  id
+                  namespace
+                  key
+                  value
+                  type
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+      const vars2 = {
+        "product": {
+          "id": `gid://shopify/Product/${id}`,
+          "metafields": [
+            {
+              "key": "numero_de_alumnos", "namespace": "custom", "value": `${cantActual}`,
+              "type": "number_integer"
+            }]
+        }
+      };
+
+
+
+      const createResponse3 = await this.makeShopifyRequest(
+        queryUpd, vars2
+      );
+
+      console.log(JSON.stringify(createResponse3))
     } catch (error) {
       return error;
     }

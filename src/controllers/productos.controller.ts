@@ -39,50 +39,6 @@ export class ProductosController {
     private merchantCredentials: MerchantCredentialsService,
   ) { }
 
-  // //sincronizando 1 producto en 1 mercado
-  // @post('/productos/collection-repeated/{merchant_id}')
-  // async collectionsRepeatedOnMerchant(
-  //   @param.path.number('merchant_id') merchantId: number,
-  //   @param.path.number('product_id') productId: number,
-  //   @requestBody({
-  //     description: 'Opciones para la sincronización de un producto por merchant',
-  //     required: false,
-  //     content: {
-  //       'application/json': {
-  //         schema: {
-  //           type: 'object',
-  //           properties: {
-  //             // hours: {type: 'number', default: 72, nullable: true}
-  //           },
-  //         },
-  //       },
-  //     },
-  //   }) options?: SyncBatchRequest,
-  //   // @inject('services.QueueService') queueService?: QueueService,
-  // ): Promise<{
-  //   sku: string;
-  //   success: boolean;
-  //   shopifyId: string;
-  //   variantId: string;
-  //   inventoryItemId: string;
-  //   imagen?: object;
-  // }> {
-  //   // -------- BLOCK ajustes de credenciales ----------------
-  //   // 1. Obtener credenciales del merchant
-  //   const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
-
-  //   // 2. Configurar el servicio Shopify con estas credenciales
-  //   await this.shopifyService.setCredentials(credentials);
-  //   //--------- END BLOCK -----------------------------------
-
-  //   const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
-  //   const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
-  //   // console.log(shopifyProduct);
-
-  //   const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
-
-  //   return result;
-  // }
 
   //sincronizando 1 producto en 1 mercado
   @post('/productos/syncronize/{merchant_id}/{product_id}')
@@ -808,7 +764,7 @@ export class ProductosController {
     return {
       title: producto.titulo ?? '',
       description: producto.descripcion,
-      vendor: producto?.extraData?.vendor ?? 'Euroinnova',
+      vendor: producto?.extraData?.inst_educ_propietaria ?? '',
       productType: producto?.extraData?.product_type ?? 'Curso',
       // status: producto?.publicado ? 'active' : 'draft',
       // variants: [{
@@ -836,6 +792,10 @@ export class ProductosController {
   private getShopifyMetafields(producto: Productos, id: number): Metafield[] {
 
     try {
+      // console.log('IEP', producto.extraData?.inst_educ_propietaria)
+      const collec = `${producto.extraData.colecciones_shopify} ${producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria && ','} ${producto.extraData?.inst_educ_propietaria}`
+      // console.log('COLLECT', collec);
+
 
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
 
@@ -884,8 +844,8 @@ export class ProductosController {
         },
         {
           namespace: 'custom',
-          key: 'coleccion_shopify',
-          value: producto.extraData.colecciones_shopify ?? "",
+          key: 'collection_shopify',
+          value: collec,
           type: 'single_line_text_field'
         },
         {

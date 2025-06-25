@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {inject} from '@loopback/core';
 import {get, param, post, requestBody, response} from '@loopback/rest';
@@ -48,6 +49,71 @@ export class GeneralController {
   //ajustando credenciales del merchant al que se accede
   setShopifyServiceCredentials = async (credentials: ShopifyCredentials) => {
     await this.shopifyService.setCredentials(credentials);
+  }
+
+  /**
+   * Endpoint para recibir el webhook y gestionar colecciones de productos
+   */
+  @post('/general/product-count/{merchant_id}')
+  @response(200, {
+    description: 'Set Product Student Count',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'json',
+        },
+      },
+    },
+  })
+  async productStudentCount(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object'
+          },
+        },
+      },
+    })
+    order: any,
+  ): Promise<{message: string, orderProc: any}> {
+    try {
+
+      // console.log('ORDER', JSON.stringify(order));
+
+      const {line_items} = order;
+      const credenciales = await this.merchantCredentials.getShopifyCredentials(merchantId);
+      await this.shopifyService.setCredentials(credenciales);
+
+      for (const item of line_items) {
+        const {product_id} = item;
+
+        await this.shopifyService.updateProductStudentsCount(product_id);
+
+      }
+      // const productId = product.id;
+
+      // // Obtener metadatos y colecciones del producto
+      // const {metaTitles, collectionTitles} = await this.getProductCollectionsData(productId, merchantId);
+
+      // // Determinar colecciones a modificar
+      // const {collectionsToRemove, collectionsToAdd} = this.determineCollectionsToUpdate(
+      //   metaTitles,
+      //   collectionTitles,
+      // );
+
+      // // Procesar cambios en las colecciones
+      // await this.processCollectionChanges(productId, collectionsToRemove, collectionsToAdd);
+
+      // // Actualizar tags si es necesario
+      // await this.updateProductTagsIfNeeded(productId, arrTags, metaTitles);
+
+      return {message: `ℹ️ Order processed.`, orderProc: order};
+    } catch (error) {
+      console.error('🔥 Error processing:', error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
 
   @get('/general/api/ip-info')
