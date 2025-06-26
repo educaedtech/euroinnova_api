@@ -364,7 +364,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             (SELECT rdu.syncro_data FROM references_data_unidad rdu WHERE rdu.merchant_id =2 AND rdu.unidad_id =p.unidad_id) AS syncro_data,
             (
             SELECT
-              JSON_ARRAYAGG( cp.shopify_id )
+              JSON_ARRAYAGG( rd.shopify_id )
             FROM
               productos_creditos_productos pc
               JOIN creditos_productos cp ON cp.id = pc.credito_producto_id
