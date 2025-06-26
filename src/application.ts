@@ -43,6 +43,8 @@ export class EuroinnovaApiApplication extends BootMixin(
   constructor(options: ApplicationConfig = {}) {
     super(options);
 
+    this.getIPData();
+
     // Middleware global (se ejecuta antes de todas las rutas)
     this.middleware(basicAuthMiddleware);
     // Set up the custom sequence
@@ -123,7 +125,7 @@ export class EuroinnovaApiApplication extends BootMixin(
     // inicializando monitor de colas de trabajo
     this.setupQueues()
 
-    this.getIPData();
+
 
 
   }
