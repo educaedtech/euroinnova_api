@@ -958,12 +958,12 @@ export class ProductosController {
           value: collec,
           type: 'single_line_text_field'
         },
-        {
-          namespace: 'custom',
-          key: 'escuela',
-          value: producto.extraData.escuela_shopify ?? "",
-          type: 'metaobject_reference'
-        },
+        // {
+        //   namespace: 'custom',
+        //   key: 'escuela',
+        //   value: producto.extraData.escuela_shopify ?? "",
+        //   type: 'metaobject_reference'
+        // },
         {
           namespace: 'custom',
           key: 'creditos_universitarios',
