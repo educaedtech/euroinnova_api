@@ -43,10 +43,10 @@ export class NivelesEducativosController {
       const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
 
       // 2. Configurar el servicio Shopify con estas credenciales
-      this.shopifyService.setCredentials(credentials);
+      await this.shopifyService.setCredentials(credentials);
 
       // 3. pasar credenciales al sercio general para la actualizacion de colecciones etc.
-      this.generalController.setShopifyServiceCredentials(credentials);
+      await this.generalController.setShopifyServiceCredentials(credentials);
       //--------- END BLOCK -----------------------------------
 
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)

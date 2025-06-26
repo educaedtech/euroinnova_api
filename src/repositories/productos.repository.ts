@@ -355,7 +355,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             FROM
               references_data rd
             WHERE
-              rd.referenceable_id = idio.id
+              rd.referenceable_id = p.idioma_contenido_id
               AND rd.referenceable_type = 'idiomas'
               AND rd.merchant_id = mr.id
             ) AS idioma_shopify,
@@ -471,7 +471,9 @@ export class ProductosRepository extends DefaultCrudRepository<
             (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
 						(SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id=uf.subfamilia_id AND uf.unidad_id=u.id) as subfamilia,
 						(SELECT ie.nombre as inst_educ_propietaria FROM unidades_instituciones_educativas uie JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id AND uie.unidad_id = u.id AND uie.propietaria=1) as inst_educ_propietaria,
-						'' as cod_scorm
+						'' as cod_scorm,
+						(SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id) as pdf_temario,
+            p.descripcion_seo
 
           FROM
             productos p
@@ -503,7 +505,13 @@ export class ProductosRepository extends DefaultCrudRepository<
         nivel_educativo_shopify: null,
         idioma_shopify: null
       };
-      const {familia, subfamilia, inst_educ_propietaria, cod_scorm,
+      const {
+        pdf_temario,
+        descripcion_seo,
+        familia,
+        subfamilia,
+        inst_educ_propietaria,
+        cod_scorm,
         url_mylxp,
         plat_online_name,
         plat_online_url,
@@ -528,7 +536,35 @@ export class ProductosRepository extends DefaultCrudRepository<
         unidad_tiempo
       } = extraData[0] ?? DEFAULT_EXTRADATA;
 
-      producto.extraData = {familia, subfamilia, inst_educ_propietaria, cod_scorm, url_mylxp, plat_online_name, plat_online_url, product_type, vendor, shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
+      producto.extraData = {
+        pdf_temario,
+        descripcion_seo,
+        familia,
+        subfamilia,
+        inst_educ_propietaria,
+        cod_scorm, url_mylxp,
+        plat_online_name,
+        plat_online_url,
+        product_type,
+        vendor,
+        shopify_id,
+        syncro_data,
+        colecciones_shopify,
+        idiomas_relacionados,
+        productos_relacionados_idioma,
+        url_imagenes_diplomas,
+        url_imagenes_logos,
+        creditos,
+        idioma_nombre,
+        escuela_shopify,
+        modalidad,
+        area_shopify,
+        facultad_shopify,
+        nivel_educativo_shopify,
+        idioma_shopify,
+        creditos_productos_shopify,
+        unidad_tiempo
+      };
 
       producto.shopifyId = shopify_id ?? undefined;
 

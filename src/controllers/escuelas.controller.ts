@@ -38,7 +38,7 @@ export class EscuelasController {
       const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
 
       // 2. Configurar el servicio Shopify con estas credenciales
-      this.shopifyService.setCredentials(credentials);
+      await this.shopifyService.setCredentials(credentials);
       //--------- END BLOCK -----------------------------------
 
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)

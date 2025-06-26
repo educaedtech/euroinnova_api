@@ -40,17 +40,17 @@ export class FacultadesController {
       // -------- BLOCK ajustes de credenciales ----------------
       // 1. Obtener credenciales del merchant
       const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
-      console.log(credentials);
 
       // 2. Configurar el servicio Shopify con estas credenciales
-      this.shopifyService.setCredentials(credentials);
+      await this.shopifyService.setCredentials(credentials);
 
       // 2. pasar credenciales al sercio general para la actualizacion de colecciones etc.
-      this.generalController.setShopifyServiceCredentials(credentials);
+      await this.generalController.setShopifyServiceCredentials(credentials);
       //--------- END BLOCK -----------------------------------
 
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.facultadesRepository.find();// as FacultadesInterface[];
+
       const facultadesData = data.map(f => ({id_facultad: f.id, nombre: f.nombre, logo: f.logo})) as FacultadesInterface[];
 
       // creando Collecciones en caso de que no existan

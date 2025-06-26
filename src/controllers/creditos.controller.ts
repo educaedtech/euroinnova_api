@@ -35,11 +35,9 @@ export class CreditosController {
       // -------- BLOCK ajustes de credenciales ----------------
       // 1. Obtener credenciales del merchant
       const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
-      console.log(credentials);
 
       // 2. Configurar el servicio Shopify con estas credenciales
-      this.shopifyService.setCredentials(credentials);
-
+      await this.shopifyService.setCredentials(credentials);
       //--------- END BLOCK -----------------------------------
 
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)

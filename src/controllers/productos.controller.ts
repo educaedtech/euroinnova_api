@@ -900,6 +900,18 @@ export class ProductosController {
       return [
         {
           namespace: 'custom',
+          key: 'pdf_temario',
+          value: producto?.extraData?.pdf_temario ?? "",
+          type: 'url'
+        },
+        {
+          namespace: 'custom',
+          key: 'descripcion_seo',
+          value: producto?.extraData?.descripcion_seo ?? '',
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
           key: 'codigo_scorm',
           value: producto.extraData.cod_scorm ?? "",
           type: 'single_line_text_field'
