@@ -278,6 +278,7 @@ export class ProductosRepository extends DefaultCrudRepository<
   ): Promise<ProductosWithRelations> {
 
     const {merchantId} = options;
+    console.log('MERCHANT', merchantId)
 
     try {
       // Obtener el producto base SIN incluir propiedades no mapeadas
@@ -300,7 +301,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             AND uie.unidad_id = ?`,
         [merchantId, id],
       );
-      console.log(JSON.stringify(instituciones));
+      console.log('ENTRO', JSON.stringify(instituciones));
       institucionesIds = instituciones.map((i: any) => i.shopify_id) || [];
 
       producto.institucionesEducativasIds = institucionesIds;
