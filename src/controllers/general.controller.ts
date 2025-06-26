@@ -228,7 +228,7 @@ export class GeneralController {
 
     const query = `query ProductMetafield($namespace: String!, $key: String!, $ownerId: ID!) {
       product(id: $ownerId) {
-        collections(first: 10) {
+        collections(first: 250) {
           nodes {
             id
             title
@@ -242,7 +242,7 @@ export class GeneralController {
 
     const variables = {
       namespace: 'custom',
-      key: 'coleccion_shopify',
+      key: 'collection_shopify',
       ownerId: `gid://shopify/Product/${productId}`,
     };
 
