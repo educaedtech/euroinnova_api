@@ -764,7 +764,9 @@ export class ShopifyService {
                                   referenceable_type,
                                   merchant_id,
                                   shopify_id
-                              ) VALUES (?,'creditos_productos',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+                              ) VALUES (?,'creditos_productos',?,?)
+                               ON DUPLICATE KEY UPDATE
+                                shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
@@ -933,7 +935,9 @@ export class ShopifyService {
                                   referenceable_type,
                                   merchant_id,
                                   shopify_id
-                              ) VALUES (?,'escuelas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+                              ) VALUES (?,'escuelas',?,?)
+                               ON DUPLICATE KEY UPDATE
+                               shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
@@ -1110,7 +1114,9 @@ export class ShopifyService {
                                   referenceable_type,
                                   merchant_id,
                                   shopify_id
-                              ) VALUES (?,'areas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+                              ) VALUES (?,'areas',?,?)
+                               ON DUPLICATE KEY UPDATE
+                                shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
@@ -1283,7 +1289,9 @@ export class ShopifyService {
                                   referenceable_type,
                                   merchant_id,
                                   shopify_id
-                              ) VALUES (?,'facultades',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+                              ) VALUES (?,'facultades',?,?)
+                               ON DUPLICATE KEY UPDATE
+                                shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
@@ -1456,7 +1464,9 @@ export class ShopifyService {
                                   referenceable_type,
                                   merchant_id,
                                   shopify_id
-                              ) VALUES (?,'instituciones_educativas',?,?)`, [idInstDB, merchantId, shopifyIdUpdate]);
+                              ) VALUES (?,'instituciones_educativas',?,?)
+                               ON DUPLICATE KEY UPDATE
+                                shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
