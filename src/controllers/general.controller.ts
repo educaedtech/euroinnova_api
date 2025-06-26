@@ -92,22 +92,6 @@ export class GeneralController {
         await this.shopifyService.updateProductStudentsCount(product_id);
 
       }
-      // const productId = product.id;
-
-      // // Obtener metadatos y colecciones del producto
-      // const {metaTitles, collectionTitles} = await this.getProductCollectionsData(productId, merchantId);
-
-      // // Determinar colecciones a modificar
-      // const {collectionsToRemove, collectionsToAdd} = this.determineCollectionsToUpdate(
-      //   metaTitles,
-      //   collectionTitles,
-      // );
-
-      // // Procesar cambios en las colecciones
-      // await this.processCollectionChanges(productId, collectionsToRemove, collectionsToAdd);
-
-      // // Actualizar tags si es necesario
-      // await this.updateProductTagsIfNeeded(productId, arrTags, metaTitles);
 
       return {message: `ℹ️ Order processed.`, orderProc: order};
     } catch (error) {

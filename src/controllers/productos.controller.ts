@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-for-of */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/naming-convention */
 import {inject, injectable} from '@loopback/core';
@@ -26,6 +27,13 @@ interface SyncBatchRequest {
   merchant?: number;// Optional: mercado de productos a sincronizar
   hours?: number;
 }
+
+interface ProductoRelacionado {
+  title: string;
+  ids_relacionados: number[];
+  cantidad_duplicados: number;
+}
+
 @injectable()
 export class ProductosController {
   constructor(
@@ -38,6 +46,95 @@ export class ProductosController {
     @inject('services.MerchantCredentialsService')
     private merchantCredentials: MerchantCredentialsService,
   ) { }
+
+  //sincronizando 1 producto en 1 mercado
+  @post('/productos/relations-idiomas/{merchant_id}')
+  async productRelationsIdiomasMerchant(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Actualización de las relaciones entre productos por idiomas',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              // hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    // @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    TotalOperations: number;
+    success: boolean;
+    errors: any[]
+  }> {
+
+    const data = await this.productosRepository.execute(`SELECT
+                              title,
+                              JSON_ARRAYAGG(productos.unidad_id) AS ids_relacionados,
+                              COUNT(*) AS cantidad_duplicados
+                          FROM
+                              productos
+                            JOIN unidades_merchants
+                              ON
+                                productos.unidad_id = unidades_merchants.unidad_id
+                              AND
+                                merchant_id=?
+                              AND
+                              title IS NOT NULL
+                          GROUP BY
+                              title
+                          HAVING
+                              COUNT(*) >= 1
+                          ORDER BY
+                              title;`, [merchantId]) as ProductoRelacionado[];
+
+    // console.log(JSON.stringify(data));
+    const inserts = this.generarInsertsRelaciones(data);
+
+    // Mostrar los resultados en la consola
+    // console.log(inserts.join('\n'));
+    const errors = [];
+    try {
+      for (const sqlIns of inserts) {
+        await this.productosRepository.execute(sqlIns);
+      }
+    } catch (error) {
+      console.error(error);
+      errors.push(error);
+    }
+
+    return {
+      TotalOperations: inserts.length,
+      success: true,
+      errors: errors
+    };
+  }
+
+
+
+  generarInsertsRelaciones(datos: ProductoRelacionado[]): string[] {
+    const inserts: string[] = [];
+
+    datos.forEach((item: ProductoRelacionado) => {
+      const ids = item.ids_relacionados;
+
+      // Generar todas las combinaciones posibles (incluyendo relación consigo mismo)
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = 0; j < ids.length; j++) {
+          inserts.push(
+            `INSERT INTO unidades_unidades_relacionadas (unidad_id, unidad_relacionada_id,tipo_relacion_id) VALUES (${ids[i]}, ${ids[j]},1);`
+          );
+        }
+      }
+    });
+
+    return inserts;
+  }
+
 
 
   //sincronizando 1 producto en 1 mercado
