@@ -114,8 +114,6 @@ export class ProductosController {
     };
   }
 
-
-
   generarInsertsRelaciones(datos: ProductoRelacionado[]): string[] {
     const inserts: string[] = [];
 
@@ -126,7 +124,11 @@ export class ProductosController {
       for (let i = 0; i < ids.length; i++) {
         for (let j = 0; j < ids.length; j++) {
           inserts.push(
-            `INSERT INTO unidades_unidades_relacionadas (unidad_id, unidad_relacionada_id,tipo_relacion_id) VALUES (${ids[i]}, ${ids[j]},1);`
+            `INSERT INTO unidades_unidades_relacionadas
+              (unidad_id, unidad_relacionada_id,tipo_relacion_id)
+             VALUES (${ids[i]}, ${ids[j]},1)
+             ON
+             DUPLICATE KEY UPDATE unidad_relacionada_id = VALUES(unidad_relacionada_id);`
           );
         }
       }
@@ -134,8 +136,6 @@ export class ProductosController {
 
     return inserts;
   }
-
-
 
   //sincronizando 1 producto en 1 mercado
   @post('/productos/syncronize/{merchant_id}/{product_id}')

@@ -420,28 +420,28 @@ export class ProductosRepository extends DefaultCrudRepository<
               ui.unidad_id = p.unidad_id
             ) AS url_imagenes_diplomas,
             (
-            SELECT
-              NULLIF(
-                (
-                SELECT
-                  JSON_ARRAYAGG( shopify_id )
-                FROM
-                  (
-                  SELECT
-                    un.shopify_id
-                  FROM
-                    unidades_unidades_relacionadas uur
-                    JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
-                    JOIN unidades un ON un.id = pd.unidad_id
-                  WHERE
-                    uur.unidad_id = p.unidad_id
-                    AND uur.tipo_relacion_id = 1
-                    AND un.shopify_id IS NOT NULL
-                  ) filtered
-                ),
-                JSON_ARRAY( NULL )
-              )
-            ) AS productos_relacionados_idioma,
+							SELECT
+								NULLIF(
+									(
+									SELECT
+										JSON_ARRAYAGG( shopify_id )
+									FROM
+										(
+										SELECT
+											rfd.shopify_id
+										FROM
+											unidades_unidades_relacionadas uur
+											JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
+											JOIN unidades un ON un.id = pd.unidad_id AND un.id=u.id
+											JOIN unidades_merchants ume ON ume.unidad_id = un.id AND ume.merchant_id = mr.id
+											JOIN references_data_unidad rfd ON rfd.merchant_id = mr.id AND rfd.unidad_id =un.id
+											AND uur.tipo_relacion_id = 1
+											AND un.shopify_id IS NOT NULL
+										) filtered
+									),
+									JSON_ARRAY( NULL )
+								)
+							) AS productos_relacionados_idioma,
             (
             SELECT
               NULLIF(
@@ -466,8 +466,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             (SELECT mylxps.url FROM mylxps WHERE mylxps.id=um.mylxp_id) as url_mylxp,
             po.nombre as plat_online_name,
             po.url as plat_online_url,
-            ( SELECT rfu.shopify_id FROM references_data_unidad rfu WHERE rfu.unidad_id = u.id AND rfu.merchant_id=um.merchant_id) as shopify_id,
-             (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
+            (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
 						(SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id=uf.subfamilia_id AND uf.unidad_id=u.id) as subfamilia,
 						(SELECT ie.nombre as inst_educ_propietaria FROM unidades_instituciones_educativas uie JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id AND uie.unidad_id = u.id AND uie.propietaria=1) as inst_educ_propietaria,
 						'' as cod_scorm
@@ -526,6 +525,7 @@ export class ProductosRepository extends DefaultCrudRepository<
           creditos_productos_shopify,
           unidad_tiempo
         } = extraData[0] ?? DEFAULT_EXTRADATA;
+
         producto.extraData = {familia, subfamilia, inst_educ_propietaria, cod_scorm, url_mylxp, plat_online_name, plat_online_url, product_type, vendor, shopify_id, syncro_data, colecciones_shopify, idiomas_relacionados, productos_relacionados_idioma, url_imagenes_diplomas, url_imagenes_logos, creditos, idioma_nombre, escuela_shopify, modalidad, area_shopify, facultad_shopify, nivel_educativo_shopify, idioma_shopify, creditos_productos_shopify, unidad_tiempo};
 
         producto.shopifyId = shopify_id ?? undefined;

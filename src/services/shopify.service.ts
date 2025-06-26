@@ -142,20 +142,13 @@ export class ShopifyService {
   private async productNeedsUpdate(existingProduct: any, newData: any): Promise<boolean> {
 
     if (existingProduct.title !== newData.title) return true;
-    console.log('title');
     if (existingProduct.descriptionHtml !== (newData.descriptionHtml ?? 'Descripción del producto')) return true;
-    console.log('desc');
     if (existingProduct.productType !== (newData.productType ?? 'Curso')) return true;
-    console.log('type');
     if (existingProduct.vendor !== (newData.vendor ?? 'Euroinnova')) return true;
-    console.log('vendor');
     // Comparar variante
     const variant = existingProduct.variants.edges[0].node;
     if (parseFloat(variant.price) !== parseFloat(newData.price)) return true;
-    console.log('price');
-    console.log(variant, newData.sku)
     if (variant.sku !== newData.sku) return true;
-    console.log('sku');
 
     // Comparar metafields
     const existingMetafields = existingProduct.metafields.edges.map((e: any) => e.node);
@@ -239,9 +232,8 @@ export class ShopifyService {
         const searchResponse = await this.makeShopifyRequest(searchQueryBySKU, {});
         // console.log('searchResponse', searchResponse.data.products.edges)
         prdl = searchResponse.data.products.edges[0]?.node ?? null;
-        console.log(prdl);
+        // console.log(prdl);
         gid = prdl?.id ?? undefined;
-        // console.log('N3', gid)
 
       } catch (error) {
         this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
@@ -288,6 +280,8 @@ export class ShopifyService {
       }
 
       this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`)
+
+      // console.log(productInput)
 
       if (needsUpd) {
 
