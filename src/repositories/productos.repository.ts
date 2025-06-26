@@ -300,6 +300,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             AND uie.unidad_id = ?`,
           [merchantId, producto.unidadId],
         );
+        console.log(JSON.stringify(instituciones));
         institucionesIds = instituciones.map((i: any) => i.shopify_id) || [];
 
         producto.institucionesEducativasIds = institucionesIds;
