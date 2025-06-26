@@ -174,6 +174,7 @@ export class ProductosController {
     //--------- END BLOCK -----------------------------------
 
     const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
+    console.log(JSON.stringify(product));
     const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
     // console.log(shopifyProduct);
 

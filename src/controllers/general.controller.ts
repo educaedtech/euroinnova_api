@@ -93,7 +93,7 @@ export class GeneralController {
 
       }
 
-      return {message: `ℹ️ Order processed.`, orderProc: order};
+      return {message: `ℹ️ Order processed.`, orderProc: order.id};
     } catch (error) {
       console.error('🔥 Error processing:', error instanceof Error ? error.message : String(error));
       throw error;
