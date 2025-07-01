@@ -72,6 +72,8 @@ export class ProductosController {
     errors: any[]
   }> {
 
+    const removingRelations = await this.productosRepository.execute(`TRUNCATE TABLE unidades_unidades_relacionadas ;`, []);
+    console.log('ℹ️ Cleaning Table: unidades_unidades_relacionadas', removingRelations.info);
     const data = await this.productosRepository.execute(`SELECT
                               title,
                               JSON_ARRAYAGG(productos.unidad_id) AS ids_relacionados,
@@ -88,7 +90,7 @@ export class ProductosController {
                           GROUP BY
                               title
                           HAVING
-                              COUNT(*) >= 1
+                              COUNT(*) > 1
                           ORDER BY
                               title;`, [merchantId]) as ProductoRelacionado[];
 
@@ -123,13 +125,14 @@ export class ProductosController {
       // Generar todas las combinaciones posibles (incluyendo relación consigo mismo)
       for (let i = 0; i < ids.length; i++) {
         for (let j = 0; j < ids.length; j++) {
-          inserts.push(
-            `INSERT INTO unidades_unidades_relacionadas
+          if (ids[i] !== ids[j])
+            inserts.push(
+              `INSERT INTO unidades_unidades_relacionadas
               (unidad_id, unidad_relacionada_id,tipo_relacion_id)
              VALUES (${ids[i]}, ${ids[j]},1)
              ON
              DUPLICATE KEY UPDATE unidad_relacionada_id = VALUES(unidad_relacionada_id);`
-          );
+            );
         }
       }
     });
