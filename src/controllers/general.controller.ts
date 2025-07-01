@@ -428,8 +428,9 @@ export class GeneralController {
       // Buscar o crear la colección
       const collection = await this.findOrCreateCollection(collectionName);
 
-      // Agregar producto a la colección
-      const query = `mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
+      if (collection) {
+        // Agregar producto a la colección
+        const query = `mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
         collectionAddProducts(id: $id, productIds: $productIds) {
           collection {
             id
@@ -448,33 +449,41 @@ export class GeneralController {
         }
       }`;
 
-      const variables = {
-        id: collection?.id,
-        productIds: [`gid://shopify/Product/${productId}`],
-      };
-
-      const response4 = await this.shopifyService.makeShopifyRequest(query, variables);
-      const data: ShopifyResponse<{
-        collectionAddProducts: {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          collection: any;
-          userErrors: Array<{field: string; message: string}>;
+        const variables = {
+          id: collection?.id,
+          productIds: [`gid://shopify/Product/${productId}`],
         };
-      }> = response4;
 
-      if (data.data?.collectionAddProducts.userErrors.length > 0) {
-        console.log('🔥 Error', data.data.collectionAddProducts.userErrors);
-      } else {
-        console.log(
-          `✅ Producto ${productId} agregado a la colección (${collection?.title})`,
-        );
+        const response4 = await this.shopifyService.makeShopifyRequest(query, variables);
+        const data: ShopifyResponse<{
+          collectionAddProducts: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            collection: any;
+            userErrors: Array<{field: string; message: string}>;
+          };
+        }> = response4;
+
+        if (data.data?.collectionAddProducts.userErrors.length > 0) {
+          console.log('🔥 Error', data.data.collectionAddProducts.userErrors);
+        } else {
+          console.log(
+            `✅ Producto ${productId} agregado a la colección (${collection?.title})`,
+          );
+        }
+
       }
+      else {
+        console.log(`ℹ️ No se encontro la colección ${collectionName}, no se pudo agregar el producto ${productId} a la misma.`)
+      }
+
     } catch (error) {
       console.error(
         `Error al agregar producto ${productId} a colección (${collectionName}):`,
         error instanceof Error ? error.message : String(error),
       );
     }
+
+
   }
 
   public async findOrCreateCollection(collectionName: string): Promise<Collection | null> {
@@ -509,6 +518,9 @@ export class GeneralController {
       // retorna la coleccion porque ya existe
       console.log(`ℹ️  Collection (EXIST) => ${collectionName}`)
       return data.data.collections.nodes[0];
+    }
+    else {
+      return null;
     }
 
     // Crear la colección si no existe
