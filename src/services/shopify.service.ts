@@ -182,9 +182,9 @@ export class ShopifyService {
 
       let gid = shopifyId ?? undefined;
       let prdl = null;
-      // if (!shopifyId) {
-      this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
 
+      this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
+      let existingMetafields = [];
       try {
         // buscamos el producto en shopify para determinar si ya existe via SKU
         const searchQueryBySKU = `query GetProductBySku {
@@ -215,7 +215,7 @@ export class ShopifyService {
                       }
                     }
                   }
-                  metafields(first: 100) {
+                  metafields(first: 250) {
                     edges {
                       node {
                         namespace
@@ -235,14 +235,30 @@ export class ShopifyService {
         // console.log(prdl);
         gid = prdl?.id ?? undefined;
 
+        //tomando todos los datos de los metafields actuales en caso de existir
+        existingMetafields = prdl?.metafields.edges.map((edge: any) => edge.node) || [];
+
       } catch (error) {
         this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
         gid = undefined;
       }
-      // }
-      // else {
-      //   this.logger.log(`➡️  Sincronizado Anteriormente  -> Shopify ID-Curso:${unidadId}, sku:${product.sku}, ID-Shopi:${shopifyId}`);
-      // }
+
+      // Convertir a Map para facilitar el merge
+      const metafieldsMap = new Map();
+      existingMetafields.forEach((mf: any) => {
+        metafieldsMap.set(`${mf.namespace}:${mf.key}`, mf);
+      });
+
+      // Reemplazar o agregar los nuevos que tienes
+      product?.metafields?.forEach((mf: any) => {
+        metafieldsMap.set(`${mf.namespace}:${mf.key}`, mf);
+      });
+
+      // Convertir el resultado final a array
+      const mergedMetafields = Array.from(metafieldsMap.values());
+
+      // Ajustando metafields
+      product.metafields = mergedMetafields;
 
       const productInput = {
         id: gid,
@@ -255,7 +271,7 @@ export class ShopifyService {
         productOptions: [],
         variants: [],
         seo: product.seo,
-        metafields: product.metafields ? product.metafields.filter(m => m.value !== '').map(meta => {
+        metafields: product.metafields ? product?.metafields?.filter(m => m.value !== '').map(meta => {
           let processedValue = meta.value;
 
           // Eliminar saltos de línea y múltiples espacios
