@@ -404,7 +404,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             FROM
               unidades_merchants_imagenes ui
               JOIN imagenes im ON ui.imagen_id = im.id
-              AND im.tipo_id = 1
+              AND im.tipo_id = 1 AND ui.merchant_id = mr.id
             WHERE
               ui.unidad_id = p.unidad_id
             ) AS url_imagenes_logos,
@@ -416,7 +416,7 @@ export class ProductosRepository extends DefaultCrudRepository<
               JSON_ARRAY( NULL ))
             FROM
               unidades_merchants_imagenes ui
-              JOIN imagenes im ON ui.imagen_id = im.id
+              JOIN imagenes im ON ui.imagen_id = im.id AND ui.merchant_id = mr.id
               AND im.tipo_id = 2
             WHERE
               ui.unidad_id = p.unidad_id
@@ -471,7 +471,7 @@ export class ProductosRepository extends DefaultCrudRepository<
             (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
 						(SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id=uf.subfamilia_id AND uf.unidad_id=u.id) as subfamilia,
 						(SELECT ie.nombre as inst_educ_propietaria FROM unidades_instituciones_educativas uie JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id AND uie.unidad_id = u.id AND uie.propietaria=1) as inst_educ_propietaria,
-						'' as cod_scorm,
+						p.codigo_afo_educalab as cod_scorm,
 						(SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id) as pdf_temario,
             p.descripcion_seo
 
