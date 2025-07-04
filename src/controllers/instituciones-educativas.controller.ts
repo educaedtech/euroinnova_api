@@ -12,6 +12,7 @@ import {
 import {InstitucionesEducativasRepository} from '../repositories';
 import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {InstitucionesEducativasInterface, ShopifyService, SyncResults} from '../services/shopify.service';
+import {GeneralController} from './general.controller';
 
 export class InstitucionesEducativasController {
   constructor(
@@ -19,6 +20,8 @@ export class InstitucionesEducativasController {
     public institucionesEducativasRepository: InstitucionesEducativasRepository,
     @inject('services.ShopifyService')
     public shopifyService: ShopifyService,
+    @inject('controllers.GeneralController')
+    public generalController: GeneralController,
     @inject('services.MerchantCredentialsService')
     private merchantCredentials: MerchantCredentialsService,
   ) { }
@@ -36,21 +39,27 @@ export class InstitucionesEducativasController {
       // -------- BLOCK ajustes de credenciales ----------------
       // 1. Obtener credenciales del merchant
       const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
-
       // 2. Configurar el servicio Shopify con estas credenciales
       await this.shopifyService.setCredentials(credentials);
+      // 2. pasar credenciales al sercio general para la actualizacion de colecciones etc.
+      await this.generalController.setShopifyServiceCredentials(credentials);
       //--------- END BLOCK -----------------------------------
 
       // 1. Obtener datos de forma eficiente (await faltante en la versión original)
       const data = await this.institucionesEducativasRepository.find();
       const institutionsData = data.map(f => ({id_institucion_educativa: f.id, nombre: f.nombre, logo: f.logo})) as InstitucionesEducativasInterface[];
-      // console.log(facultadesData)
+      const inst2collections = data.map(ac => ac.nombre) as string[];
 
       // 2. Validar que hay datos antes de continuar
       if (!institutionsData || institutionsData.length === 0) {
         throw new Error('No se encontraron facultades para sincronizar');
       }
 
+      // creando Collecciones en caso de que no existan
+      inst2collections.push('INSTITUCIONES EDUCATIVAS');
+      for (const element of inst2collections) {
+        await this.generalController.findOrCreateCollection(element);
+      }
       // 3. Sincronizar con Shopify
       const syncResult = await this.shopifyService.syncronizeInstitucionesEducativas(institutionsData, this.institucionesEducativasRepository, merchantId);
 

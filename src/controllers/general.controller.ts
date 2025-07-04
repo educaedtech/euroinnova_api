@@ -519,9 +519,9 @@ export class GeneralController {
       console.log(`ℹ️  Collection (EXIST) => ${collectionName}`)
       return data.data.collections.nodes[0];
     }
-    else {
-      return null;
-    }
+    // else {
+    //   return null;
+    // }
 
     // Crear la colección si no existe
     const createQuery = `mutation createCollection($input: CollectionInput!) {
