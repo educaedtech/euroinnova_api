@@ -486,8 +486,11 @@ export class GeneralController {
 
   }
 
-  public async findOrCreateCollection(collectionName: string): Promise<Collection | null> {
+  public async findOrCreateCollection(collectionName: string, publications: any = []): Promise<Collection | null> {
+
+    // console.log('PUBS', publications)
     // console.log(`ℹ️ search or create collection [ ${collectionName} ]`);
+
     // Buscar la colección por nombre
     const query = `query GetCollection($query: String!) {
        collections(first: 1, query: $query) {
@@ -516,12 +519,62 @@ export class GeneralController {
 
     if (data.data?.collections.nodes.length > 0) {
       // retorna la coleccion porque ya existe
-      console.log(`ℹ️  Collection (EXIST) => ${collectionName}`)
+      console.log(`ℹ️  Collection (EXIST) => ${collectionName}`);
+      const collObj = data.data?.collections.nodes[0];
+
+      const collUpd = `mutation updateCollectionRules($input: CollectionInput!) {
+                        collectionUpdate(input: $input) {
+                          collection {
+                            id
+                            title
+                            description
+                            handle
+                            ruleSet {
+                              rules {
+                                column
+                                relation
+                                condition
+                              }
+                              appliedDisjunctively
+                            }
+                          }
+                          job {
+                            id
+                            done
+                          }
+                          userErrors {
+                            field
+                            message
+                          }
+                        }
+                      }`;
+
+      const vUpd = {
+        input: {
+          id: collObj.id,
+          ruleSet: {
+            appliedDisjunctively: false,
+            rules: {
+              column: "TAG",
+              relation: "EQUALS",
+              condition: collectionName
+            }
+          },
+          // publications: publications.map((p: {publicationId: any;}) => ({publicationId: p.publicationId})),
+        }
+      };
+
+      try {
+        const updColl = await this.shopifyService.makeShopifyRequest(collUpd, vUpd);
+        console.log(JSON.stringify(updColl));
+      } catch (error2) {
+        console.log('Error updating collection', error2)
+      }
+
+
+
       return data.data.collections.nodes[0];
     }
-    // else {
-    //   return null;
-    // }
 
     // Crear la colección si no existe
     const createQuery = `mutation createCollection($input: CollectionInput!) {
@@ -540,11 +593,15 @@ export class GeneralController {
     const createVariables = {
       input: {
         title: collectionName,
-        publications: [
-          {channelHandle: 'online_store'},
-          {channelHandle: 'pos'},
-          {channelHandle: 'shop-72'},
-        ],
+        ruleSet: {
+          appliedDisjunctively: false,
+          rules: {
+            column: "TAG",
+            relation: "EQUALS",
+            condition: collectionName
+          }
+        },
+        publications: publications.map((p: {publicationId: any;}) => ({publicationId: p.publicationId})),
       },
     };
 
