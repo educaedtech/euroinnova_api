@@ -894,7 +894,7 @@ export class ProductosController {
 
     try {
       // console.log('IEP', producto.extraData?.inst_educ_propietaria)
-      const collec = `${producto.extraData.colecciones_shopify} ${producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria && ','} ${producto.extraData?.inst_educ_propietaria}`
+      const collec = `${producto.extraData.colecciones_shopify} ${(producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria !== null) ? ',' : ''} ${producto.extraData?.inst_educ_propietaria !== null ? producto.extraData?.inst_educ_propietaria : ''}`
       // console.log('COLLECT', collec);
 
 

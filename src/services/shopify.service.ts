@@ -98,7 +98,7 @@ export class ShopifyService {
   private credentials: ShopifyCredentials;
   public config: ShopifyConfig = {storeUrl: '', accessToken: '', apiVersion: ''};
 
-  private publications = [];
+  public publications = [];
   async setCredentials(credentials: ShopifyCredentials) {
     this.credentials = credentials;
     this.config.storeUrl = this.credentials.url;
@@ -118,9 +118,13 @@ export class ShopifyService {
 
     const channelsResponse = await this.makeShopifyRequest(channelsQuery, {});
 
-    this.publications = channelsResponse.data.publications.edges.map((edge: {node: {id: any;};}) => ({
+    this.publications = channelsResponse.data.publications.edges.map((edge: {
+      node: {
+        id: any;
+      };
+    }) => ({
       "publicationId": edge.node.id, // ID del canal
-      "publishDate": new Date().toISOString()// Opcional
+      "publishDate": new Date().toISOString()
     }))
 
   }
@@ -207,6 +211,7 @@ export class ShopifyService {
                   descriptionHtml
                   productType
                   vendor
+                  tags
                   variants(first: 1) {
                     edges {
                       node {
@@ -271,6 +276,7 @@ export class ShopifyService {
         productOptions: [],
         variants: [],
         seo: product.seo,
+        tags: product.metafields.find(mt => mt.key === "collection_shopify")?.value ?? '',
         metafields: product.metafields ? product?.metafields?.filter(m => m.value !== '').map(meta => {
           let processedValue = meta.value;
 
@@ -295,12 +301,9 @@ export class ShopifyService {
         console.log('NEEDS UPD', gid, needsUpd)
       }
 
-      this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`)
-
-      // console.log(productInput)
+      this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`);
 
       if (needsUpd) {
-
         // create|update product
         const createQuery = `
         mutation productSet($input:ProductSetInput!) {
@@ -333,7 +336,7 @@ export class ShopifyService {
           input: productInput
         };
 
-        const createResponse = await this.makeShopifyRequest(createQuery, variables);
+        let createResponse = await this.makeShopifyRequest(createQuery, variables);
         //validando errores en el proceso de creacion|actualzacion de producto
         if (
           createResponse.errors ||
@@ -343,17 +346,34 @@ export class ShopifyService {
           const errors =
             createResponse.errors || createResponse.data.productSet.userErrors;
           const e1 = `⛔ Failed to create Shopify product ${unidadId}`;
-          const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`
-          this.logger.error(e1)
-          this.logger.error(e2)
-          return {
-            sku: product.sku,
-            success: false,
-            shopifyId: e1,
-            variantId: e2,
-            inventoryItemId: '',
-            imagen: undefined,
-          };
+          const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`;
+
+          // manejar el error de handle repetido
+          const handleErrorDetected = errors.filter((e: {field: string | string[];}) => e.field.includes("handle")).length > 0;
+          if (handleErrorDetected) {
+            this.logger.log(`👉 Handle repeated for ${unidadId} =>⚙️ Proccesing ...`);
+            const newProd = await this.makeVersioningOfProduct(productInput, createQuery);
+            createResponse = newProd.response;
+            console.log('NewProdHandle', newProd);
+
+
+            if (newProd.success === false) {
+              this.logger.error(e1)
+              this.logger.error(e2)
+              return {
+                sku: product.sku,
+                success: false,
+                shopifyId: e1,
+                variantId: e2,
+                inventoryItemId: '',
+                imagen: undefined,
+              };
+            }
+
+          }
+          //-----------------------------------------
+
+
 
         }
 
@@ -475,6 +495,63 @@ export class ShopifyService {
         imagen: undefined,
       };
     }
+  }
+
+
+  private async makeVersioningOfProduct(data: any, createQuery = '') {
+    const {handle} = data;
+    //buscando productos con el mismo handle
+    const query = `{
+              products(first: 250, query: "handle:`+ handle + `"){
+                nodes{
+                    id
+                    title
+                    handle
+                    status
+                  }
+                }
+              } `;
+
+    try {
+      const prodSameHandle = await this.makeShopifyRequest(query, {});
+      const mut = `mutation UpdateProductHandleStatus($product: ProductUpdateInput!) {
+                  productUpdate(product: $product) {
+                    product {
+                      id
+                      title
+                      handle
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }`;
+
+      for (const prd of prodSameHandle.data.products.nodes) {
+        const nQ = {
+          product: {
+            id: prd.id,
+            status: "DRAFT",
+            handle: handle + `-` + Date.now().toString()
+          }
+        };
+        const updH = await this.makeShopifyRequest(mut, nQ);
+        console.log(updH);
+      }
+    } catch (error) {
+      console.log('ERR', error);
+      return {success: false};
+    }
+
+
+    try {
+      const nProd = await this.makeShopifyRequest(createQuery, {input: data});
+      return {success: true, response: nProd};
+    } catch (error) {
+      return {success: false};
+    }
+
   }
 
   private async activateInventoryLocations(
@@ -1027,7 +1104,7 @@ export class ShopifyService {
             {key: "titulo", value: `${area.titulo}`}
           ];
 
-          console.log(JSON.stringify(fields));
+          // console.log(JSON.stringify(fields));
           const existing = existingMetaobjectsMap.get(area.id_area.toString());
 
           let shopifyIdUpdate = null;

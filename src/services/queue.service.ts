@@ -101,7 +101,7 @@ export class QueueService implements LifeCycleObserver {
   }
 
   //-------new methods--------
-  async addProductBatchToSync(batch: {unidadId: number, merchantId: number}[] /*ProductData[]*/, credenciales: ShopifyCredentials): Promise<void> {
+  async addProductBatchToSync(batch: {unidadId: number, merchantId: number}[], credenciales: ShopifyCredentials): Promise<void> {
 
     this.productSyncQueue.add('sync-product', {
       batch, // Enviamos el array completo
@@ -190,5 +190,7 @@ export class QueueService implements LifeCycleObserver {
       }
     });
   }
+
+
 
 }
