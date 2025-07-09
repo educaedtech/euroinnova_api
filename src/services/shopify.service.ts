@@ -311,6 +311,14 @@ export class ShopifyService {
             product {
               id
               title
+              media(first: 100) {
+                nodes {
+                  id
+                  alt
+                  mediaContentType
+                  status
+                }
+              }
               variants(first: 1) {
                 edges {
                   node {
@@ -337,6 +345,7 @@ export class ShopifyService {
         };
 
         let createResponse = await this.makeShopifyRequest(createQuery, variables);
+
         //validando errores en el proceso de creacion|actualzacion de producto
         if (
           createResponse.errors ||
@@ -393,6 +402,11 @@ export class ShopifyService {
         }
 
         const newProduct = createResponse.data.productSet.product;
+
+        const medias = newProduct?.media?.nodes ?? [];
+        // console.log('MEDIA', JSON.stringify(medias));
+        const inMedia = medias.some((m: {id: string | undefined;}) => m.id === product.syncro_data?.idShopi);
+        // console.log('INMedia', inMedia)
         const variant = newProduct.variants.edges[0].node;
 
         //si tiene imagen subirla shopify y asignarsela al producto
@@ -400,7 +414,9 @@ export class ShopifyService {
         let nDataImg = undefined;
 
         let synD = null;
-        if (product.imagenWeb && product?.syncro_data?.url === undefined) {
+        // console.log('ImgWeb', product.imagenWeb);
+        // console.log('SyncroData', product?.syncro_data);
+        if (!inMedia) {
 
           this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
           imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
@@ -413,13 +429,23 @@ export class ShopifyService {
 
         //  Actualizar el producto, syncro_data (unidades) con el ID de Shopify
         try {
-          await this.productosRepo.execute(`INSERT INTO references_data_unidad
+          if (synD) {
+            await this.productosRepo.execute(`INSERT INTO references_data_unidad
                                                 (unidad_id,merchant_id,shopify_id, syncro_data)
                                               VALUES
                                                 (?,?,?,?)
                                               ON DUPLICATE KEY UPDATE
                                                 shopify_id=VALUES(shopify_id),
                                                 syncro_data = VALUES(syncro_data);`, [unidadId, merchantId, newProduct.id, synD]);
+          }
+          else {
+            await this.productosRepo.execute(`INSERT INTO references_data_unidad
+                                                (unidad_id,merchant_id,shopify_id)
+                                              VALUES
+                                                (?,?,?)
+                                              ON DUPLICATE KEY UPDATE
+                                                shopify_id=VALUES(shopify_id);`, [unidadId, merchantId, newProduct.id]);
+          }
 
         } catch (errorMsg) {
           this.logger.error(`🔥 ERROR on table: reference_data_unidad (${unidadId}): ` + errorMsg?.message);
@@ -668,6 +694,7 @@ export class ShopifyService {
   private async uploadImageToShopify(imageUrl: string, productId: string, syncro_data?: {url: string, idShopi: string}): Promise<any> {
 
     if (syncro_data?.url === imageUrl) {
+      this.logger.log(`Image don't need upload`);
       return {msg: "upload image don't needed"}
     }
     const mutation = `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
