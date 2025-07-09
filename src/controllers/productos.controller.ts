@@ -878,8 +878,8 @@ export class ProductosController {
       imagenWeb: producto.imagenWeb ?? undefined,// url !== producto.imagenWeb ? producto.imagenWeb : undefined,
       tituloComercial: producto.tituloComercial ?? undefined,
       handle: producto.url,
-      seo: producto.descripcionSeo ? {
-        description: producto.descripcionSeo ?? undefined
+      seo: producto.metaDescripcion ? {
+        description: producto.metaDescripcion ?? undefined
       } : undefined,
       syncro_data: producto?.extraData.syncro_data ?? undefined,
       shopifyId: producto?.extraData?.shopify_id,
