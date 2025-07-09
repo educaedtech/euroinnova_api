@@ -531,11 +531,9 @@ export class GeneralController {
       // retorna la coleccion porque ya existe
       console.log(`ℹ️  Collection (EXIST) => ${collectionName}`);
       const collObj = data.data?.collections.nodes[0];
-      console.log('COLL', collObj);
-
-
+      return collObj;
+      /*console.log('COLL', collObj);
       //primero modificar el handle actual para luego poenr el mismo handle a la nueva coleccion
-
       const q = `mutation updateCollectionHandle($input: CollectionInput!) {
                         collectionUpdate(input: $input) {
                           collection {
@@ -562,7 +560,6 @@ export class GeneralController {
       console.log('ℹ️ Modied COLL', JSON.stringify(ag))
 
       //----------------------------------
-
       const collUpd = `mutation updateCollectionRules($input: CollectionInput!) {
                         collectionCreate(input: $input) {
                           collection {
@@ -611,9 +608,8 @@ export class GeneralController {
         console.log('Error updating collection', error2)
       }
 
+      */
 
-
-      return data.data.collections.nodes[0];
     }
 
     // Crear la colección si no existe
