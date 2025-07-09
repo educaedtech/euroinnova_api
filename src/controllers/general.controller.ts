@@ -9,6 +9,8 @@ import {ShopifyService} from '../services/shopify.service';
 interface Collection {
   id: string;
   title: string;
+  metafields?: any;
+  handle?: string;
 }
 
 interface Product {
@@ -502,6 +504,14 @@ export class GeneralController {
            descriptionHtml
            sortOrder
            templateSuffix
+           metafields(first:250){
+            nodes{
+                namespace
+                key
+                type
+                value
+            }
+           }
          }
        }
      }`;
@@ -521,9 +531,40 @@ export class GeneralController {
       // retorna la coleccion porque ya existe
       console.log(`ℹ️  Collection (EXIST) => ${collectionName}`);
       const collObj = data.data?.collections.nodes[0];
+      console.log('COLL', collObj);
+
+
+      //primero modificar el handle actual para luego poenr el mismo handle a la nueva coleccion
+
+      const q = `mutation updateCollectionHandle($input: CollectionInput!) {
+                        collectionUpdate(input: $input) {
+                          collection {
+                            id
+                            title
+                            description
+                            handle
+                          }
+                          userErrors {
+                            field
+                            message
+                          }
+                        }
+                      }`;
+      const v = {
+        input: {
+          id: collObj.id,
+          title: `${collectionName}-IPD`,
+          handle: `${collObj.handle}-ipd`
+        }
+      };
+
+      const ag = await this.shopifyService.makeShopifyRequest(q, v);
+      console.log('ℹ️ Modied COLL', JSON.stringify(ag))
+
+      //----------------------------------
 
       const collUpd = `mutation updateCollectionRules($input: CollectionInput!) {
-                        collectionUpdate(input: $input) {
+                        collectionCreate(input: $input) {
                           collection {
                             id
                             title
@@ -538,10 +579,6 @@ export class GeneralController {
                               appliedDisjunctively
                             }
                           }
-                          job {
-                            id
-                            done
-                          }
                           userErrors {
                             field
                             message
@@ -551,7 +588,9 @@ export class GeneralController {
 
       const vUpd = {
         input: {
-          id: collObj.id,
+          // id: collObj.id,
+          title: `${collectionName}`,
+          handle: collObj.handle,
           ruleSet: {
             appliedDisjunctively: false,
             rules: {
@@ -560,7 +599,8 @@ export class GeneralController {
               condition: collectionName
             }
           },
-          // publications: publications.map((p: {publicationId: any;}) => ({publicationId: p.publicationId})),
+          metafields: collObj?.metafields?.nodes ?? [],
+          publications: publications.map((p: {publicationId: any;}) => ({publicationId: p.publicationId})),
         }
       };
 

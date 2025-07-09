@@ -61,8 +61,7 @@ export class AreasController {
       }
 
       // creando Collecciones en caso de que no existan
-      area2collections.push('AREAS')
-      // area2collections = ['AREAS', 'TEST RULES'];
+      area2collections.push('AREAS');
       for (const element of area2collections) {
         await this.generalController.findOrCreateCollection(element, this.shopifyService.publications);
       }
