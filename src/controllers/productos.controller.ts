@@ -179,7 +179,6 @@ export class ProductosController {
     const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
     // console.log(JSON.stringify(product));
     const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
-    // console.log(shopifyProduct);
 
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
 
@@ -878,9 +877,9 @@ export class ProductosController {
       imagenWeb: producto.imagenWeb ?? undefined,// url !== producto.imagenWeb ? producto.imagenWeb : undefined,
       tituloComercial: producto.tituloComercial ?? undefined,
       handle: producto.url,
-      seo: producto.metaDescripcion ? {
-        description: producto.metaDescripcion ?? undefined
-      } : undefined,
+      seo: {
+        description: producto.metaDescripcion !== null ? producto.metaDescripcion : ' '
+      },
       syncro_data: producto?.extraData.syncro_data ?? undefined,
       shopifyId: producto?.extraData?.shopify_id,
       unidadId: id

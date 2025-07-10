@@ -196,6 +196,9 @@ export class ShopifyService {
               edges {
                 node {
                   id
+                  seo {
+                    description
+                  }
                   media(first:1){
                     nodes{
                         id
@@ -275,7 +278,7 @@ export class ShopifyService {
         vendor: product.vendor ?? 'Euroinnova',
         productOptions: [],
         variants: [],
-        seo: product.seo,
+        seo: product.seo ?? undefined,
         tags: product.metafields.find(mt => mt.key === "collection_shopify")?.value ?? '',
         metafields: product.metafields ? product?.metafields?.filter(m => m.value !== '').map(meta => {
           let processedValue = meta.value;
@@ -301,9 +304,11 @@ export class ShopifyService {
         console.log('NEEDS UPD', gid, needsUpd)
       }
 
-      this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`);
 
-      if (needsUpd) {
+      if (needsUpd || 1 == 1) {
+
+        this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`);
+
         // create|update product
         const createQuery = `
         mutation productSet($input:ProductSetInput!) {
@@ -311,6 +316,9 @@ export class ShopifyService {
             product {
               id
               title
+              seo {
+               description
+              }
               media(first: 100) {
                 nodes {
                   id
@@ -386,8 +394,6 @@ export class ShopifyService {
 
         }
 
-        // obteniendo el producto creado|actualziado
-
         if (!createResponse.data?.productSet?.product) {
           const errorMsg = 'Invalid response structure from Shopify';
           this.logger.error(errorMsg);
@@ -401,10 +407,17 @@ export class ShopifyService {
           };
         }
 
+        // obteniendo el producto creado | actualizado
         const newProduct = createResponse.data.productSet.product;
 
         const medias = newProduct?.media?.nodes ?? [];
-        // console.log('MEDIA', JSON.stringify(medias));
+
+        //imagenes que hay que remover de shopify para dejar exclusivamente la actual del producto
+        const mediaImg2remove = medias.filter((m: {id: string | undefined;}) => m.id !== product.syncro_data?.idShopi) ?? [];
+        if (mediaImg2remove.length > 0)
+          await this.removeFiles(mediaImg2remove);
+
+
         const inMedia = medias.some((m: {id: string | undefined;}) => m.id === product.syncro_data?.idShopi);
         // console.log('INMedia', inMedia)
         const variant = newProduct.variants.edges[0].node;
@@ -521,6 +534,26 @@ export class ShopifyService {
         imagen: undefined,
       };
     }
+  }
+
+  private async removeFiles(files: any) {
+    const ids = files.map((m: {id: any;}) => m.id)
+    this.logger.log('🧨 Removing files: ' + JSON.stringify(ids))
+    const query = `mutation DeleteFiles {
+        fileDelete(fileIds: `+ JSON.stringify(ids) + `) {
+          deletedFileIds
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }`;
+
+    const dR = await this.makeShopifyRequest(query, {});
+    // console.log('Files2Remove', files);
+    // console.log(JSON.stringify(dR));
+    return dR;
   }
 
 
