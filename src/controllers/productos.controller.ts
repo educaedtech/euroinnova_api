@@ -892,7 +892,7 @@ export class ProductosController {
   private getShopifyMetafields(producto: Productos, id: number): Metafield[] {
 
     try {
-      // console.log('IEP', producto.extraData?.inst_educ_propietaria)
+      // console.log('IEP', producto.extraData)
       const collec = `${producto.extraData.colecciones_shopify} ${(producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria !== null) ? ',' : ''} ${producto.extraData?.inst_educ_propietaria !== null ? producto.extraData?.inst_educ_propietaria : ''}`
       // console.log('COLLECT', collec);
 
@@ -1158,12 +1158,12 @@ export class ProductosController {
           value: producto.extraData.url_imagenes_logos ? JSON.stringify(producto.extraData.url_imagenes_logos) : '',
           type: 'list.url'
         },
-        {
-          namespace: 'custom',
-          key: 'productos_relacionados_por_idiomas',
-          value: producto.extraData.productos_relacionados_idioma ? JSON.stringify(producto.extraData.productos_relacionados_idioma) : '',
-          type: 'list.product_reference'
-        },
+        // {
+        //   namespace: 'custom',
+        //   key: 'productos_relacionados_por_idiomas',
+        //   value: producto.extraData.productos_relacionados_idioma ? JSON.stringify(producto.extraData.productos_relacionados_idioma) : '',
+        //   type: 'list.product_reference'
+        // },
       ];
 
     } catch (error) {

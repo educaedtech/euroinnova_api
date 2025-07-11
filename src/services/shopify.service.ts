@@ -297,6 +297,17 @@ export class ShopifyService {
         }) : []
       };
 
+      // buscando los productos relacionados segun title
+      if (gid !== undefined) {
+        const prodRelations = await this.getProductsRelationsByLang(gid, productInput.title);
+        console.log('prodRelations', prodRelations);
+        productInput.metafields.push({
+          namespace: 'custom',
+          key: 'productos_relacionados_por_idiomas',
+          value: prodRelations.length > 0 ? JSON.stringify(prodRelations.map((p: {id: any;}) => p.id)) : '',
+          type: 'list.product_reference'
+        });
+      }
 
       let needsUpd = true;
       if (gid !== undefined) {
@@ -534,6 +545,33 @@ export class ShopifyService {
         imagen: undefined,
       };
     }
+  }
+
+  // busca los productos relacionados con el sin contarlo( se buscan aquellos con el mismo title )
+  private async getProductsRelationsByLang(id: string, title: string) {
+
+    const query = `{
+    products(first:250,query:"title:${title} && status:ACTIVE"){
+        nodes{
+          id
+          title
+          status
+        }
+      }
+    }`;
+
+
+    const prodsR = await this.makeShopifyRequest(query, {});
+
+    if (prodsR?.data?.products?.nodes) {
+      const prods = prodsR?.data?.products?.nodes.filter((p: {
+        title: string; id: string;
+      }) => p.id !== id && p.title === title) ?? [];
+      return prods;
+    }
+
+    return [];
+
   }
 
   private async removeFiles(files: any) {
@@ -954,24 +992,86 @@ export class ShopifyService {
     };
 
     try {
-      // 1. Obtener TODOS los metaobjects existentes de una sola vez
-      const existingResponse = await this.makeShopifyRequest(this.allExistingQuery, {
-        type: "escuelas"
-      });
+
+      const q = `query GetAllCreditMetaobjects($type: String!, $after: String) {
+                    metaobjects(type: $type, first: 250, after: $after) {
+                      edges {
+                        cursor
+                        node {
+                          id
+                          fields {
+                            key
+                            value
+                          }
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                      }
+                    }
+                  }`;
+
+      let hasNextPage = true;
+      let after = null;
+      const allMetaobjects = [];
+
+      while (hasNextPage) {
+        const r1 = await this.makeShopifyRequest(q, {
+          type: "escuelas",
+          after: after
+        });
+
+        const edges = r1.data.metaobjects.edges;
+        allMetaobjects.push(...edges.map((e: {node: any;}) => e.node));
+
+        hasNextPage = r1.data.metaobjects.pageInfo.hasNextPage;
+        if (hasNextPage) {
+          after = edges[edges.length - 1].cursor;
+        }
+      }
+
+
+      //----------limpiar todos los metaobjects -------------
+
+      // console.log(allMetaobjects.length, allMetaobjects[0]);
+      // const dddd = allMetaobjects.slice(0, 10);
+      // console.log(JSON.stringify(dddd.map(m => m.id)))
+      // let i = 0;
+      // for (const el2del of allMetaobjects) {
+      //   const qDel = `mutation DeleteMetaobject($id: ID!) {
+      //                   metaobjectDelete(id: $id) {
+      //                     deletedId
+      //                     userErrors {
+      //                       field
+      //                       message
+      //                       code
+      //                     }
+      //                   }
+      //                 }`;
+      //   const rr = await this.makeShopifyRequest(qDel, {id: el2del.id});
+
+      //   setTimeout(() => {
+      //     console.log(i++, el2del.fields[1], JSON.stringify(rr))
+      //   }, 100);
+      // }
+
+      //----------------- end section para eliminar metaobjects
 
       // 2. Mapear los existentes por su id_credito para búsqueda rápida
       const existingMetaobjectsMap = new Map<string, {id: string, fields: any[]}>();
 
-      existingResponse?.data?.metaobjects?.edges?.forEach((edge: any) => {
-        const idField = edge.node.fields.find((f: any) => f.key === "id_escuela");
+
+      allMetaobjects.forEach((edge: any) => {
+        const idField = edge.fields.find((f: any) => f.key === "id_escuela");
         if (idField) {
           existingMetaobjectsMap.set(idField.value, {
-            id: edge.node.id,
-            fields: edge.node.fields
+            id: edge.id,
+            fields: edge.fields
           });
         }
       });
 
+      // const part = areasOnDB.slice(0, 2);
       // 3. Procesar cada area
       for (const escuela of areasOnDB) {
         try {
@@ -981,18 +1081,18 @@ export class ShopifyService {
           const fields = [
             {key: "id_escuela", value: `${escuela.id_escuela}`},
             {key: "nombre", value: `${escuela.nombre}`},
-            {key: "logo", value: `${escuela.logo}`}
+            {key: "logo", value: `${escuela.logo ?? ''}`}
           ];
 
           const existing = existingMetaobjectsMap.get(escuela.id_escuela.toString());
-
+          // console.log('existing', existing, escuela.id_escuela)
           let shopifyIdUpdate = null;
           if (existing) {
 
-            shopifyIdUpdate = existing.id;
+            shopifyIdUpdate = existing?.id;
             // 4. Verificar si realmente necesita actualización
             let needsUpdate = fields.some(newField => {
-              const existingField = existing.fields.find((f: any) => f.key === newField.key);
+              const existingField = existing?.fields.find((f: any) => f.key === newField.key);
               return !existingField || existingField.value !== newField.value;
             });
             needsUpdate = true;
@@ -1030,7 +1130,7 @@ export class ShopifyService {
               `;
 
               const vars2Upd = {
-                id: existing.id,
+                id: existing?.id,
                 capabilities: {
                   publishable: {status: "ACTIVE"}
                 },
@@ -1046,7 +1146,7 @@ export class ShopifyService {
             }
 
           } else {
-            // 6. Crear nueva area si no existe
+            // 6. Crear nueva escuela si no existe
             const createMutation = `
                 mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
                   metaobjectCreate(metaobject: $metaobject) {
@@ -1073,7 +1173,7 @@ export class ShopifyService {
             });
 
             if (createResponse?.data?.metaobjectCreate?.userErrors?.length > 0) {
-              throw new Error(JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
+              throw new Error('Error: trying to create school' + JSON.stringify(createResponse.data.metaobjectCreate.userErrors));
             }
 
             shopifyIdUpdate = createResponse?.data?.metaobjectCreate?.metaobject?.id;
@@ -1083,7 +1183,7 @@ export class ShopifyService {
 
           // ----- BLOCK insertar referencia en BD -------
           try {
-            await repo.execute(`INSERT INTO references_data (
+            const dr = await repo.execute(`INSERT INTO references_data (
                                   referenceable_id,
                                   referenceable_type,
                                   merchant_id,
@@ -1091,6 +1191,9 @@ export class ShopifyService {
                               ) VALUES (?,'escuelas',?,?)
                                ON DUPLICATE KEY UPDATE
                                shopify_id=VALUES(shopify_id)`, [idInstDB, merchantId, shopifyIdUpdate]);
+
+            // console.log(idInstDB, merchantId, shopifyIdUpdate, JSON.stringify(dr));
+            // return results;
           } catch (error) {
             console.log('🔥 ERROR: ', error.message)
           }
