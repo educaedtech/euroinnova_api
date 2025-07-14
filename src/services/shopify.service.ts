@@ -187,7 +187,7 @@ export class ShopifyService {
       let gid = shopifyId ?? undefined;
       let prdl = null;
 
-      this.logger.log(`➡️  Buscando -> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
+      this.logger.log(`➡️  Buscando en Merchant( $${merchantId} )-> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
       let existingMetafields = [];
       try {
         // buscamos el producto en shopify para determinar si ya existe via SKU
@@ -247,7 +247,7 @@ export class ShopifyService {
         existingMetafields = prdl?.metafields.edges.map((edge: any) => edge.node) || [];
 
       } catch (error) {
-        this.logger.error(`🔥ERROR searching prod: ${product.sku} : ` + error?.message);
+        this.logger.error(`🔥ERROR en Merchant( $${merchantId} ) searching prod: ${product.sku} : ` + error?.message);
         gid = undefined;
       }
 
@@ -297,28 +297,34 @@ export class ShopifyService {
         }) : []
       };
 
+
+      // console.log('TAGS', productInput.tags);
+
+
+
       // buscando los productos relacionados segun title
       if (gid !== undefined) {
-        const prodRelations = await this.getProductsRelationsByLang(gid, productInput.title);
-        console.log('prodRelations', prodRelations);
-        productInput.metafields.push({
-          namespace: 'custom',
-          key: 'productos_relacionados_por_idiomas',
-          value: prodRelations.length > 0 ? JSON.stringify(prodRelations.map((p: {id: any;}) => p.id)) : '',
-          type: 'list.product_reference'
-        });
+        const prodRelations = await this.getProductsRelationsByLang(gid ?? '', productInput.title);
+
+        if (prodRelations.length > 0) {
+          this.logger.log(`ℹ️ Relaciones de Producto (${product.sku})  en Merchant( $${merchantId} ) ${JSON.stringify(prodRelations.map((pp: any) => pp.id))}`)
+          productInput.metafields.push({
+            namespace: 'custom',
+            key: 'productos_relacionados_por_idiomas',
+            value: prodRelations.length > 0 ? JSON.stringify(prodRelations.map((p: {id: any;}) => p.id)) : "",
+            type: 'list.product_reference'
+          });
+        }
       }
 
       let needsUpd = true;
       if (gid !== undefined) {
         needsUpd = await this.productNeedsUpdate(prdl, {...productInput, price: product.price, sku: product.sku});
-        console.log('NEEDS UPD', gid, needsUpd)
       }
-
 
       if (needsUpd || 1 == 1) {
 
-        this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})`);
+        this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})  en Merchant( $${merchantId} )`);
 
         // create|update product
         const createQuery = `
@@ -327,6 +333,7 @@ export class ShopifyService {
             product {
               id
               title
+              tags
               seo {
                description
               }
@@ -362,9 +369,9 @@ export class ShopifyService {
         const variables = {
           input: productInput
         };
+        // console.log(JSON.stringify(productInput.metafields));
 
         let createResponse = await this.makeShopifyRequest(createQuery, variables);
-
         //validando errores en el proceso de creacion|actualzacion de producto
         if (
           createResponse.errors ||
@@ -373,16 +380,15 @@ export class ShopifyService {
           console.error('', JSON.stringify(createResponse));
           const errors =
             createResponse.errors || createResponse.data.productSet.userErrors;
-          const e1 = `⛔ Failed to create Shopify product ${unidadId}`;
-          const e2 = `🔥 product ${unidadId}: ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`;
+          const e1 = `⛔ Failed to create Shopify product ${unidadId}  en Merchant( $${merchantId} )`;
+          const e2 = `🔥 product ${unidadId} en Merchant( $${merchantId} ): ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`;
 
           // manejar el error de handle repetido
           const handleErrorDetected = errors.filter((e: {field: string | string[];}) => e.field.includes("handle")).length > 0;
           if (handleErrorDetected) {
-            this.logger.log(`👉 Handle repeated for ${unidadId} =>⚙️ Proccesing ...`);
+            this.logger.log(`👉 Handle repeated on Merchant( $${merchantId} ) for ${unidadId} =>⚙️ Proccesing ...`);
             const newProd = await this.makeVersioningOfProduct(productInput, createQuery);
             createResponse = newProd.response;
-            console.log('NewProdHandle', newProd);
 
 
             if (newProd.success === false) {
@@ -442,7 +448,7 @@ export class ShopifyService {
         // console.log('SyncroData', product?.syncro_data);
         if (!inMedia) {
 
-          this.logger.log(`↗️  Subiendo imagen de producto ${unidadId}`);
+          this.logger.log(`↗️ Subiendo imagen de producto ${product.sku}  en Merchant( $${merchantId} )`);
           imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
 
           if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
@@ -1183,7 +1189,7 @@ export class ShopifyService {
 
           // ----- BLOCK insertar referencia en BD -------
           try {
-            const dr = await repo.execute(`INSERT INTO references_data (
+            await repo.execute(`INSERT INTO references_data (
                                   referenceable_id,
                                   referenceable_type,
                                   merchant_id,
