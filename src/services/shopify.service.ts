@@ -372,6 +372,8 @@ export class ShopifyService {
         // console.log(JSON.stringify(productInput.metafields));
 
         let createResponse = await this.makeShopifyRequest(createQuery, variables);
+
+        console.log('RESP:', JSON.stringify(createResponse))
         //validando errores en el proceso de creacion|actualzacion de producto
         if (
           createResponse.errors ||
@@ -386,7 +388,7 @@ export class ShopifyService {
           // manejar el error de handle repetido
           const handleErrorDetected = errors.filter((e: {field: string | string[];}) => e.field.includes("handle")).length > 0;
           if (handleErrorDetected) {
-            this.logger.log(`👉 Handle repeated on Merchant( $${merchantId} ) for ${unidadId} =>⚙️ Proccesing ...`);
+            this.logger.log(`👉 Handle repeated on Merchant( ${merchantId} ) for ${unidadId} =>⚙️ Proccesing ...`);
             const newProd = await this.makeVersioningOfProduct(productInput, createQuery);
             createResponse = newProd.response;
 
