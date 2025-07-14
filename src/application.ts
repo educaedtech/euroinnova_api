@@ -175,7 +175,7 @@ export class EuroinnovaApiApplication extends BootMixin(
       const response2 = await fetch(url, {
         method: 'GET',
       });
-      console.log('IP Respo', response2)
+      // console.log('IP Respo', response2)
 
       let dres = null;
       const contentType = response2.headers.get('content-type');
