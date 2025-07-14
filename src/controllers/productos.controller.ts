@@ -894,7 +894,7 @@ export class ProductosController {
     try {
       // console.log('IEP', producto.extraData)
       const collec = `${producto.extraData.colecciones_shopify} ${(producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria !== null) ? ',' : ''} ${producto.extraData?.inst_educ_propietaria !== null ? producto.extraData?.inst_educ_propietaria : ''}`
-      // console.log('COLLECT', collec);
+      console.log('ℹ️ COLLECTIONS', collec);
 
 
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
