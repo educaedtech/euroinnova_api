@@ -360,8 +360,8 @@ export class ProductosRepository extends DefaultCrudRepository<
               AND rd.merchant_id = mr.id
             ) AS idioma_shopify,
             idio.nombre AS idioma_nombre,
-            (SELECT rdu.shopify_id FROM references_data_unidad rdu WHERE rdu.merchant_id =2 AND rdu.unidad_id =p.unidad_id) AS shopify_id,
-            (SELECT rdu.syncro_data FROM references_data_unidad rdu WHERE rdu.merchant_id =2 AND rdu.unidad_id =p.unidad_id) AS syncro_data,
+            ( SELECT rdu.shopify_id FROM references_data_unidad rdu WHERE rdu.merchant_id = mr.id AND rdu.unidad_id = p.unidad_id ) AS shopify_id,
+            ( SELECT rdu.syncro_data FROM references_data_unidad rdu WHERE rdu.merchant_id = mr.id AND rdu.unidad_id = p.unidad_id ) AS syncro_data,
             (
             SELECT
               JSON_ARRAYAGG( rd.shopify_id )
@@ -404,7 +404,8 @@ export class ProductosRepository extends DefaultCrudRepository<
             FROM
               unidades_merchants_imagenes ui
               JOIN imagenes im ON ui.imagen_id = im.id
-              AND im.tipo_id = 1 AND ui.merchant_id = mr.id
+              AND im.tipo_id = 1
+              AND ui.merchant_id = mr.id
             WHERE
               ui.unidad_id = p.unidad_id
             ) AS url_imagenes_logos,
@@ -416,34 +417,38 @@ export class ProductosRepository extends DefaultCrudRepository<
               JSON_ARRAY( NULL ))
             FROM
               unidades_merchants_imagenes ui
-              JOIN imagenes im ON ui.imagen_id = im.id AND ui.merchant_id = mr.id
+              JOIN imagenes im ON ui.imagen_id = im.id
+              AND ui.merchant_id = mr.id
               AND im.tipo_id = 2
             WHERE
               ui.unidad_id = p.unidad_id
             ) AS url_imagenes_diplomas,
             (
-							SELECT
-								NULLIF(
-									(
-									SELECT
-										JSON_ARRAYAGG( shopify_id )
-									FROM
-										(
-										SELECT
-											rfd.shopify_id
-										FROM
-											unidades_unidades_relacionadas uur
-											JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
-											JOIN unidades un ON un.id = pd.unidad_id AND un.id=u.id
-											JOIN unidades_merchants ume ON ume.unidad_id = un.id AND ume.merchant_id = mr.id
-											JOIN references_data_unidad rfd ON rfd.merchant_id = mr.id AND rfd.unidad_id =un.id
-											AND uur.tipo_relacion_id = 1
-											AND un.shopify_id IS NOT NULL
-										) filtered
-									),
-									JSON_ARRAY( NULL )
-								)
-							) AS productos_relacionados_idioma,
+            SELECT
+              NULLIF(
+                (
+                SELECT
+                  JSON_ARRAYAGG( shopify_id )
+                FROM
+                  (
+                  SELECT
+                    rfd.shopify_id
+                  FROM
+                    unidades_unidades_relacionadas uur
+                    JOIN productos pd ON uur.unidad_relacionada_id = pd.unidad_id
+                    JOIN unidades un ON un.id = pd.unidad_id
+                    AND un.id = u.id
+                    JOIN unidades_merchants ume ON ume.unidad_id = un.id
+                    AND ume.merchant_id = mr.id
+                    JOIN references_data_unidad rfd ON rfd.merchant_id = mr.id
+                    AND rfd.unidad_id = un.id
+                    AND uur.tipo_relacion_id = 1
+                    AND un.shopify_id IS NOT NULL
+                  ) filtered
+                ),
+                JSON_ARRAY( NULL )
+              )
+            ) AS productos_relacionados_idioma,
             (
             SELECT
               NULLIF(
@@ -462,19 +467,43 @@ export class ProductosRepository extends DefaultCrudRepository<
                 AND uur.unidad_id = p.unidad_id
               ) tmp
             ) AS idiomas_relacionados,
-            CONCAT_WS( ', ', 'AREAS', a.nombre, 'FACULTADES', f.nombre, 'NIVELES EDUCATIVOS', ne.nombre ) AS colecciones_shopify,
-            mr.nombre as vendor,
-	          ne.nombre as product_type,
-            (SELECT mylxps.url FROM mylxps WHERE mylxps.id=um.mylxp_id) as url_mylxp,
-            po.nombre as plat_online_name,
-            po.url as plat_online_url,
-            (SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id=uf.familia_id AND uf.unidad_id=u.id) as familia,
-						(SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id=uf.subfamilia_id AND uf.unidad_id=u.id) as subfamilia,
-						(SELECT ie.nombre as inst_educ_propietaria FROM unidades_instituciones_educativas uie JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id AND uie.unidad_id = u.id AND uie.propietaria=1) as inst_educ_propietaria,
-						p.codigo_afo_educalab as cod_scorm,
-						(SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id) as pdf_temario,
+            CONCAT_WS(
+              ', ',
+              'AREAS',
+              a.nombre,
+              'FACULTADES',
+              f.nombre,
+              'NIVELES EDUCATIVOS',
+              ne.nombre,
+              'INSTITUCIONES EDUCATIVAS',
+              (
+              SELECT
+                GROUP_CONCAT( ie.nombre SEPARATOR ', ' )
+              FROM
+                instituciones_educativas ie
+                JOIN unidades_instituciones_educativas uie ON ie.id = uie.institucion_educativa_id
+                AND uie.unidad_id = u.id
+              )
+            ) AS colecciones_shopify,
+            mr.nombre AS vendor,
+            ne.nombre AS product_type,
+            ( SELECT mylxps.url FROM mylxps WHERE mylxps.id = um.mylxp_id ) AS url_mylxp,
+            po.nombre AS plat_online_name,
+            po.url AS plat_online_url,
+            ( SELECT f.nombre FROM familias f JOIN unidades_familias uf ON f.id = uf.familia_id AND uf.unidad_id = u.id ) AS familia,
+            ( SELECT f.nombre FROM subfamilias f JOIN unidades_subfamilias uf ON f.id = uf.subfamilia_id AND uf.unidad_id = u.id ) AS subfamilia,
+            (
+            SELECT
+              ie.nombre AS inst_educ_propietaria
+            FROM
+              unidades_instituciones_educativas uie
+              JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id
+              AND uie.unidad_id = u.id
+              AND uie.propietaria = 1
+            ) AS inst_educ_propietaria,
+            p.codigo_afo_educalab AS cod_scorm,
+            ( SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id ) AS pdf_temario,
             p.descripcion_seo
-
           FROM
             productos p
             LEFT JOIN unidades u ON p.unidad_id = u.id
@@ -486,9 +515,9 @@ export class ProductosRepository extends DefaultCrudRepository<
             LEFT JOIN modalidades md ON md.id = p.modalidad_id
             LEFT JOIN escuelas es ON es.id = u.escuela_id
             LEFT JOIN plataformas_online po ON po.id = p.plataforma_online_id
-	          JOIN merchants mr ON mr.id = ?
-            JOIN unidades_merchants um ON um.unidad_id =u.id AND um.merchant_id = mr.id
-
+            JOIN merchants mr ON mr.id = ?
+            JOIN unidades_merchants um ON um.unidad_id = u.id
+            AND um.merchant_id = mr.id
           WHERE
             p.unidad_id = ?;`;
       // AND um.activo=TRUE
