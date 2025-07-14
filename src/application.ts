@@ -168,6 +168,7 @@ export class EuroinnovaApiApplication extends BootMixin(
   }
 
   async getIPData() {
+    console.log('Entro al getIP')
     const url = 'https://ipinfo.io/json';
 
     try {
