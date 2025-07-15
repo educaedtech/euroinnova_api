@@ -19,6 +19,17 @@ import {LoggerService} from '../services/logger.service';
 import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {QueueService} from '../services/queue.service';
 
+
+type ProductItem = {
+  id: string;
+  handle: string;
+  sku: string;
+};
+
+type GroupedDuplicate = {
+  sku: string;
+  products: ProductItem[];
+};
 //  interfaz para el request body
 interface SyncBatchRequest {
   batchSize?: number;
@@ -46,6 +57,102 @@ export class ProductosController {
     @inject('services.MerchantCredentialsService')
     private merchantCredentials: MerchantCredentialsService,
   ) { }
+
+
+  //verificando productos duplicados
+  @post('/productos/verificando-duplicidades/{merchant_id}')
+  async productDuplicados(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Verificando productos duplicados',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              // hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    // @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<{
+    TotalOperations: number;
+    success: boolean;
+    errors: any[]
+  }> {
+
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+    const items = await this.shopifyService.getAllShopifyProductsRepeated();
+    console.log(items[0])
+
+    //------------------------------------------------------------------------
+    // 1. Agrupar por SKU
+    const skuMap: Record<string, ProductItem[]> = {};
+
+    for (const item of items) {
+      if (!item.sku) continue; // opcional: ignorar si no hay SKU
+      if (!skuMap[item.sku]) {
+        skuMap[item.sku] = [];
+      }
+      skuMap[item.sku].push(item);
+    }
+
+    // 2. Filtrar SKUs duplicados
+    const duplicatedSkus: GroupedDuplicate[] = Object.entries(skuMap)
+      .filter(([_, products]) => products.length > 1)
+      .map(([sku, products]) => ({
+        sku,
+        products,
+      }));
+
+    //---------------------------------------------------------
+    // const ddddd = duplicatedSkus.slice(0, 1);
+    for (const dup of duplicatedSkus) {
+      this.logger.log(`Verificando ${dup.sku}`);
+
+      // SELECT unidad_id,url FROM productos WHERE codigo = "151929-2408"
+      const dRes = await this.productosRepository.execute("SELECT unidad_id,LOWER(url) as url FROM productos WHERE codigo = ?", [dup.sku]);
+
+      const d = dRes[0];
+      const ids2delete = dup.products?.filter((pd: {handle: any;}) => pd.handle !== d.url).map(m => m.id);
+
+      for (const id of ids2delete) {
+        const del = await this.shopifyService.deleteShopifyProduct(id);
+        if (del.data.productDelete.userErrors.length === 0)
+          this.logger.log(`⛔ Product ${id} removed`);
+      }
+
+
+      //-------------block para actualizar el prod------------------------------------------
+      const product = await this.productosRepository.findByIdMine(d.unidad_id, null, {merchantId});
+      // console.log(JSON.stringify(product));
+      const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
+
+      const resultSync = await this.shopifyService.createShopifyProduct(shopifyProduct);
+      console.log('SyncProc', resultSync);
+
+      //-------------------------------------------------------
+
+      // console.log(ids2delete);
+    }
+
+    return {
+      TotalOperations: duplicatedSkus.length,
+      success: true,
+      errors: []
+    };
+  }
+
 
   //sincronizando 1 producto en 1 mercado
   @post('/productos/relations-idiomas/{merchant_id}')
@@ -894,7 +1001,7 @@ export class ProductosController {
     try {
       // console.log('IEP', producto.extraData)
       const collec = `${producto.extraData.colecciones_shopify} ${(producto.extraData.colecciones_shopify && producto.extraData?.inst_educ_propietaria !== null) ? ',' : ''} ${producto.extraData?.inst_educ_propietaria !== null ? producto.extraData?.inst_educ_propietaria : ''}`
-      console.log('ℹ️ COLLECTIONS', collec);
+      // console.log('ℹ️ COLLECTIONS', collec);
 
 
       const idiomas = [...new Set([producto.extraData?.idioma_shopify ?? null, producto.extraData.idiomas_relacionados ? producto.extraData.idiomas_relacionados : null].filter(Boolean).flat())];
