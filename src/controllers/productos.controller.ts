@@ -115,8 +115,12 @@ export class ProductosController {
         products,
       }));
 
+
+    // console.log(duplicatedSkus[0])
+
     //---------------------------------------------------------
     // const ddddd = duplicatedSkus.slice(0, 1);
+    // const logFilePath = path.join(__dirname, 'deleted_ids.log');
     for (const dup of duplicatedSkus) {
       this.logger.log(`Verificando ${dup.sku}`);
 
@@ -124,26 +128,40 @@ export class ProductosController {
       const dRes = await this.productosRepository.execute("SELECT unidad_id,LOWER(url) as url FROM productos WHERE codigo = ?", [dup.sku]);
 
       const d = dRes[0];
-      const ids2delete = dup.products?.filter((pd: {handle: any;}) => pd.handle !== d.url).map(m => m.id);
+      const ids2delete = dup.products?.filter((pd: {handle: any;}) => pd.handle !== d?.url).map(m => m.id);
 
-      for (const id of ids2delete) {
-        const del = await this.shopifyService.deleteShopifyProduct(id);
-        if (del.data.productDelete.userErrors.length === 0)
-          this.logger.log(`⛔ Product ${id} removed`);
+      // Guarda en log solo si hay IDs para eliminar
+      if (ids2delete && ids2delete.length > 0) {
+        // console.log(ids2delete)
+        // const logEntry = {
+        //   timestamp: new Date().toISOString(),
+        //   sku: dup.sku,
+        //   ids2delete,
+        // };
+
+        for (const id of ids2delete) {
+          const del = await this.shopifyService.deleteShopifyProduct(id);
+          if (del.data.productDelete.userErrors.length === 0)
+            this.logger.log(`⛔ Product ${id} removed`);
+          else
+            this.logger.error(`🧨 Errors: ${JSON.stringify(del.data.productDelete.userErrors)}`);
+        }
+
+        // fs.appendFileSync(logFilePath, JSON.stringify(logEntry) + '\n', 'utf8');
       }
+      /*
 
 
-      //-------------block para actualizar el prod------------------------------------------
-      const product = await this.productosRepository.findByIdMine(d.unidad_id, null, {merchantId});
-      // console.log(JSON.stringify(product));
-      const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
+            //-------------block para actualizar el prod------------------------------------------
+            const product = await this.productosRepository.findByIdMine(d.unidad_id, null, {merchantId});
+            // console.log(JSON.stringify(product));
+            const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
 
-      const resultSync = await this.shopifyService.createShopifyProduct(shopifyProduct);
-      console.log('SyncProc', resultSync);
+            const resultSync = await this.shopifyService.createShopifyProduct(shopifyProduct);
+            console.log('SyncProc', resultSync);
 
-      //-------------------------------------------------------
-
-      // console.log(ids2delete);
+            //-------------------------------------------------------
+      */
     }
 
     return {
