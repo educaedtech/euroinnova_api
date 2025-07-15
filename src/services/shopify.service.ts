@@ -187,7 +187,7 @@ export class ShopifyService {
       let gid = shopifyId ?? undefined;
       let prdl = null;
 
-      this.logger.log(`➡️  Buscando en Merchant( $${merchantId} )-> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
+      this.logger.log(`➡️  Buscando en Merchant( ${merchantId} )-> Shopify ID-Curso:${unidadId}, sku:${product.sku}`);
       let existingMetafields = [];
       try {
         // buscamos el producto en shopify para determinar si ya existe via SKU
@@ -247,7 +247,7 @@ export class ShopifyService {
         existingMetafields = prdl?.metafields.edges.map((edge: any) => edge.node) || [];
 
       } catch (error) {
-        this.logger.error(`🔥ERROR en Merchant( $${merchantId} ) searching prod: ${product.sku} : ` + error?.message);
+        this.logger.error(`🔥ERROR en Merchant( ${merchantId} ) searching prod: ${product.sku} : ` + error?.message);
         gid = undefined;
       }
 
@@ -307,7 +307,7 @@ export class ShopifyService {
         const prodRelations = await this.getProductsRelationsByLang(gid ?? '', productInput.title);
 
         if (prodRelations.length > 0) {
-          this.logger.log(`ℹ️ Relaciones de Producto (${product.sku})  en Merchant( $${merchantId} ) ${JSON.stringify(prodRelations.map((pp: any) => pp.id))}`)
+          this.logger.log(`ℹ️ Relaciones de Producto (${product.sku})  en Merchant( ${merchantId} ) ${JSON.stringify(prodRelations.map((pp: any) => pp.id))}`)
           productInput.metafields.push({
             namespace: 'custom',
             key: 'productos_relacionados_por_idiomas',
@@ -324,7 +324,7 @@ export class ShopifyService {
 
       if (needsUpd || 1 == 1) {
 
-        this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})  en Merchant( $${merchantId} )`);
+        this.logger.log(`👉 Operation in curse for ${unidadId} (${gid ? '✏️  Updating' : '📝 Cretaing'})  en Merchant( ${merchantId} )`);
 
         // create|update product
         const createQuery = `
@@ -373,7 +373,7 @@ export class ShopifyService {
 
         let createResponse = await this.makeShopifyRequest(createQuery, variables);
 
-        console.log('RESP:', JSON.stringify(createResponse))
+        // console.log('RESP:', JSON.stringify(createResponse))
         //validando errores en el proceso de creacion|actualzacion de producto
         if (
           createResponse.errors ||
@@ -382,8 +382,8 @@ export class ShopifyService {
           console.error('', JSON.stringify(createResponse));
           const errors =
             createResponse.errors || createResponse.data.productSet.userErrors;
-          const e1 = `⛔ Failed to create Shopify product ${unidadId}  en Merchant( $${merchantId} )`;
-          const e2 = `🔥 product ${unidadId} en Merchant( $${merchantId} ): ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`;
+          const e1 = `⛔ Failed to create Shopify product ${unidadId}  en Merchant( ${merchantId} )`;
+          const e2 = `🔥 product ${unidadId} en Merchant( ${merchantId} ): ${errors.map((e: {message: unknown;}) => e.message).join(', ')}`;
 
           // manejar el error de handle repetido
           const handleErrorDetected = errors.filter((e: {field: string | string[];}) => e.field.includes("handle")).length > 0;
@@ -450,7 +450,7 @@ export class ShopifyService {
         // console.log('SyncroData', product?.syncro_data);
         if (!inMedia) {
 
-          this.logger.log(`↗️ Subiendo imagen de producto ${product.sku}  en Merchant( $${merchantId} )`);
+          this.logger.log(`↗️ Subiendo imagen de producto ${product.sku}  en Merchant( ${merchantId} )`);
           imgWeb = await this.uploadImageToShopify(product?.imagenWeb ?? '', newProduct.id, product.syncro_data);
 
           if (imgWeb?.data?.productCreateMedia?.media[0]?.id) {
@@ -772,10 +772,10 @@ export class ShopifyService {
 
   private async uploadImageToShopify(imageUrl: string, productId: string, syncro_data?: {url: string, idShopi: string}): Promise<any> {
 
-    if (syncro_data?.url === imageUrl) {
-      this.logger.log(`Image don't need upload`);
-      return {msg: "upload image don't needed"}
-    }
+    // if (syncro_data?.url === imageUrl) {
+    //   this.logger.log(`Image don't need upload`);
+    //   return {msg: "upload image don't needed"}
+    // }
     const mutation = `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
           media {
@@ -2274,5 +2274,87 @@ export class ShopifyService {
       return error;
     }
   };
+
+
+
+  async getAllShopifyProductsRepeated() {
+    const q = `query GetAllProducts($after: String) {
+      products(first: 250, after: $after) {
+        edges {
+          cursor
+          node {
+            id
+            handle
+            sku:variants(first: 1) {
+              nodes {
+                sku
+              }
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
+    }`;
+
+    const allProducts: {id: string; handle: string; sku: string}[] = [];
+
+    let hasNextPage = true;
+    let after: string | null = null;
+
+    while (hasNextPage) {
+      const response = await this.makeShopifyRequest(q, {
+        after: after
+      });
+
+      const edges = response.data.products.edges;
+      for (const edge of edges) {
+        const product = edge.node;
+        allProducts.push({
+          id: product.id,
+          handle: product.handle,
+          sku: product.sku.nodes[0].sku,
+        });
+
+
+      }
+
+      hasNextPage = response.data.products.pageInfo.hasNextPage;
+      // hasNextPage = false;
+      after = hasNextPage ? edges[edges.length - 1].cursor : null;
+
+
+    }
+
+    return allProducts;
+  }
+
+
+  async deleteShopifyProduct(id: any) {
+
+    try {
+      const q = ` mutation {
+              productDelete(input: {id: "${id}"}) {
+                deletedProductId
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`;
+
+
+      const deleteResponse = await this.makeShopifyRequest(
+        q, {}
+      );
+      return deleteResponse;
+    } catch (error) {
+      return error;
+    }
+  }
+
+
+
 
 }
