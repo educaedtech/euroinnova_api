@@ -119,9 +119,9 @@ export class ProductosController {
     // console.log(duplicatedSkus[0])
 
     //---------------------------------------------------------
-    // const ddddd = duplicatedSkus.slice(0, 1);
+    const ddddd = duplicatedSkus.slice(0, 100);
     // const logFilePath = path.join(__dirname, 'deleted_ids.log');
-    for (const dup of duplicatedSkus) {
+    for (const dup of ddddd) {
       this.logger.log(`Verificando ${dup.sku}`);
 
       // SELECT unidad_id,url FROM productos WHERE codigo = "151929-2408"
