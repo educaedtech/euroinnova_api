@@ -144,7 +144,7 @@ export class ProductosController {
           if (del.data.productDelete.userErrors.length === 0)
             this.logger.log(`⛔ Product ${id} removed`);
           else
-            this.logger.error(`🧨 Errors: ${JSON.stringify(del.data.productDelete.userErrors)}`);
+            this.logger.error(`🧨 Errors on (${id}): ${JSON.stringify(del.data.productDelete.userErrors)}`);
         }
 
         // fs.appendFileSync(logFilePath, JSON.stringify(logEntry) + '\n', 'utf8');
