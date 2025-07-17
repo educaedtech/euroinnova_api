@@ -117,7 +117,7 @@ export class ProductosController {
       for (const producto of productos) {
         const {idCurso, status, id} = producto;
 
-        if (!cursosRelacionadosIds.has(idCurso)) {
+        if (!cursosRelacionadosIds.has(idCurso) && status === "ACTIVE") {
           // No está en cursosRelacionados ⇒ debe estar en DRAFT
           debenEstarEnDraft.push(idCurso);
           draftProccess.push(id);
