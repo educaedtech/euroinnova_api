@@ -2285,6 +2285,11 @@ export class ShopifyService {
           node {
             id
             handle
+            title
+            status
+            idCurso:metafield(namespace:"custom",key:"id_curso"){
+              value
+            }
             sku:variants(first: 1) {
               nodes {
                 sku
@@ -2298,7 +2303,7 @@ export class ShopifyService {
       }
     }`;
 
-    const allProducts: {id: string; handle: string; sku: string}[] = [];
+    const allProducts: {id: string; handle: string; sku: string, idCurso?: string, status?: string}[] = [];
 
     let hasNextPage = true;
     let after: string | null = null;
@@ -2313,6 +2318,8 @@ export class ShopifyService {
         const product = edge.node;
         allProducts.push({
           id: product.id,
+          status: product.status,
+          idCurso: product.idCurso?.value,
           handle: product.handle,
           sku: product.sku.nodes[0].sku,
         });
@@ -2320,6 +2327,7 @@ export class ShopifyService {
 
       }
 
+      this.logger.log(`➕ Founded (${allProducts.length}) productos`)
       hasNextPage = response.data.products.pageInfo.hasNextPage;
       // hasNextPage = false;
       after = hasNextPage ? edges[edges.length - 1].cursor : null;

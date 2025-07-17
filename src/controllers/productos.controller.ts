@@ -59,6 +59,100 @@ export class ProductosController {
   ) { }
 
 
+  //verificando existencia de productos en base de datos (pasando a DRAFT aquellos que fueron eliminados en BD anteriormente)
+  @post('/productos/verificando-existencias/{merchant_id}')
+  async productExistencyVerified(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Verificando existencia de productos',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              // hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    // @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<
+    {
+      ProductosEnShopify: number;
+      ProductosActivosEnBD: number;
+      pasarADraft: number;
+      pasarAActive: number;
+      success: Boolean;
+      errors: any[]
+    }> {
+
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+    const productos = await this.shopifyService.getAllShopifyProductsRepeated();
+    console.log('Productos en Shopify', productos.length);
+
+    const qDB = `SELECT u.id FROM productos p JOIN unidades u JOIN unidades_merchants um ON um.unidad_id =u.id AND u.id=p.unidad_id AND u.activo=1 AND um.merchant_id =?`;
+    const cursosRelacionados = await this.productosRepository.execute(qDB, [merchantId]);
+    console.log('Productos Activos en BD', cursosRelacionados.length)
+
+
+    // Paso 1: obtener IDs del segundo array
+    const cursosRelacionadosIds = new Set(cursosRelacionados.map((c: {id: any;}) => c.id.toString()));
+
+    // Paso 2: clasificar
+    const debenEstarEnDraft = [];
+    const debenActivarse = [];
+    const draftProccess = [];
+    const activeProccess = [];
+
+    if (cursosRelacionados.length > 0)
+      for (const producto of productos) {
+        const {idCurso, status, id} = producto;
+
+        if (!cursosRelacionadosIds.has(idCurso)) {
+          // No está en cursosRelacionados ⇒ debe estar en DRAFT
+          debenEstarEnDraft.push(idCurso);
+          draftProccess.push(id);
+        } else if (status === 'DRAFT') {
+          // Está en cursosRelacionados pero está en DRAFT ⇒ debe activarse
+          debenActivarse.push(idCurso);
+          activeProccess.push(id);
+        }
+      }
+
+    console.log('Deben estar en DRAFT:', debenEstarEnDraft.length, draftProccess[0]);
+    console.log('Deben activarse:', debenActivarse.length, activeProccess[0]);
+
+    for (const id2Draft of draftProccess) {
+      const rDraft = await this.shopifyService.updateProductStatus(id2Draft, 'draft');
+      this.logger.log(`🧨 Pass to DRAFT ${id2Draft}, status: ${JSON.stringify(rDraft.data.productSet.userErrors)}`);
+    }
+    for (const id2active of activeProccess) {
+      const rActive = await this.shopifyService.updateProductStatus(id2active, 'active');
+      this.logger.log(`✅ Pass to ACTIVE ${id2active}, status: ${JSON.stringify(rActive.data.productSet.userErrors)}`);
+    }
+
+
+    return {
+      ProductosEnShopify: productos.length,
+      ProductosActivosEnBD: cursosRelacionados.length,
+      pasarADraft: debenEstarEnDraft.length,
+      pasarAActive: debenActivarse.length,
+      success: true,
+      errors: []
+    };
+  }
+
+
+
   //verificando productos duplicados
   @post('/productos/verificando-duplicidades/{merchant_id}')
   async productDuplicados(
