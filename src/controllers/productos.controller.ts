@@ -15,21 +15,22 @@ import {Metafield, ProductData, ShopifyService} from '../services/shopify.servic
 
 // seccion para sincronizacion en lotes (jobs)
 import {requestBody} from '@loopback/rest';
+import fetch from 'node-fetch';
 import {LoggerService} from '../services/logger.service';
 import {MerchantCredentialsService} from '../services/merchant-credentials.service';
 import {QueueService} from '../services/queue.service';
 
 
-type ProductItem = {
-  id: string;
-  handle: string;
-  sku: string;
-};
+// type ProductItem = {
+//   id: string;
+//   handle: string;
+//   sku: string;
+// };
 
-type GroupedDuplicate = {
-  sku: string;
-  products: ProductItem[];
-};
+// type GroupedDuplicate = {
+//   sku: string;
+//   products: ProductItem[];
+// };
 //  interfaz para el request body
 interface SyncBatchRequest {
   batchSize?: number;
@@ -59,12 +60,13 @@ export class ProductosController {
   ) { }
 
 
-  //verificando existencia de productos en base de datos (pasando a DRAFT aquellos que fueron eliminados en BD anteriormente)
-  @post('/productos/verificando-existencias/{merchant_id}')
-  async productExistencyVerified(
+
+  //verificando productos con sku vacios
+  @post('/productos/verificando-shopify-vs-db/{merchant_id}')
+  async productEmptySKU(
     @param.path.number('merchant_id') merchantId: number,
     @requestBody({
-      description: 'Verificando existencia de productos',
+      description: 'Verificando productos entre shopify y la base de datos',
       required: false,
       content: {
         'application/json': {
@@ -99,47 +101,95 @@ export class ProductosController {
     const productos = await this.shopifyService.getAllShopifyProductsRepeated();
     console.log('Productos en Shopify', productos.length);
 
-    const qDB = `SELECT u.id FROM productos p JOIN unidades u JOIN unidades_merchants um ON um.unidad_id =u.id AND u.id=p.unidad_id AND u.activo=1 AND um.merchant_id =?`;
-    const cursosRelacionados = await this.productosRepository.execute(qDB, [merchantId]);
+    const qDB = `SELECT u.id,p.codigo as sku, p.url as handle, p.precio, um.activo FROM productos p JOIN unidades u JOIN unidades_merchants um ON um.unidad_id =u.id AND u.id=p.unidad_id AND um.merchant_id =?`;
+    let cursosRelacionados = await this.productosRepository.execute(qDB, [merchantId]);
+    cursosRelacionados = Array.isArray(cursosRelacionados) ? cursosRelacionados : [];
     console.log('Productos Activos en BD', cursosRelacionados.length)
 
-
-    // Paso 1: obtener IDs del segundo array
-    const cursosRelacionadosIds = new Set(cursosRelacionados.map((c: {id: any;}) => c.id.toString()));
+    console.log(cursosRelacionados[0])
+    // const dbByIdUnidad = cursosRelacionados.map((c: {id: any;}) => c.id.toString());
+    const dbByIdUnidad = new Set(cursosRelacionados.map((c: {id: {toString: () => any;};}) => c.id.toString()));
+    // Índices de referencia rápida por SKU
+    const dbBySku = new Map<string, any>();
+    if (Array.isArray(cursosRelacionados)) {
+      for (const curso of cursosRelacionados) {
+        if (curso.sku && curso.sku.trim() !== '') {
+          dbBySku.set(curso.sku.trim(), curso);
+        }
+      }
+    }
+    // // Paso 1: obtener IDs del segundo array
+    // const cursosRelacionadosIds = new Set(cursosRelacionados.map((c: {id: any;}) => c.id.toString()));
 
     // Paso 2: clasificar
     const debenEstarEnDraft = [];
     const debenActivarse = [];
-    const draftProccess = [];
-    const activeProccess = [];
+    const emptySKUProducts = []; //buscando los productos con SKU vacios
+    const priceEmptyProducts = []; //buscando los productos con precio vacio
+    const priceCeroProducts = []; //buscando los producntos con precio 0
+    const deleteProducts = []; //buscando los productos que deben ser eliminados (proque estan en shopify, pero no existen en la BD)
 
-    if (cursosRelacionados.length > 0)
-      for (const producto of productos) {
-        const {idCurso, status, id} = producto;
 
-        if (!cursosRelacionadosIds.has(idCurso) && status === "ACTIVE") {
-          // No está en cursosRelacionados ⇒ debe estar en DRAFT
-          debenEstarEnDraft.push(idCurso);
-          draftProccess.push(id);
-        } else if (status === 'DRAFT') {
-          // Está en cursosRelacionados pero está en DRAFT ⇒ debe activarse
-          debenActivarse.push(idCurso);
-          activeProccess.push(id);
-        }
+    const idCursosInShopify = [];
+    for (const producto of productos) {
+      const {idCurso, handle, status, id, sku, price} = producto;
+
+      idCursosInShopify.push(idCurso);
+
+      if ((sku === '' || sku === null || sku === undefined) && (status === 'ACTIVE'))
+        emptySKUProducts.push({idCurso, id, status, price}); //agregando los productos con SKU vacios
+
+      if (price === '' || price === null || price === undefined)
+        priceEmptyProducts.push({idCurso, id, status, price}); //agregando los productos con precio vacio
+
+      const priceValue = parseFloat(price);
+      if (!isNaN(priceValue) && priceValue === 0) {
+        priceCeroProducts.push({idCurso, id, status, price});//agregando los productos con precio vacio
       }
 
-    console.log('Deben estar en DRAFT:', debenEstarEnDraft.length, draftProccess[0]);
-    console.log('Deben activarse:', debenActivarse.length, activeProccess[0]);
+      if (idCurso !== '12312' && !dbByIdUnidad.has(idCurso)) {
+        deleteProducts.push({idCurso, id, status, sku, handle});
+      }
 
-    for (const id2Draft of draftProccess) {
-      const rDraft = await this.shopifyService.updateProductStatus(id2Draft, 'draft');
-      this.logger.log(`🧨 Pass to DRAFT ${id2Draft}, status: ${JSON.stringify(rDraft.data.productSet.userErrors)}`);
-    }
-    for (const id2active of activeProccess) {
-      const rActive = await this.shopifyService.updateProductStatus(id2active, 'active');
-      this.logger.log(`✅ Pass to ACTIVE ${id2active}, status: ${JSON.stringify(rActive.data.productSet.userErrors)}`);
     }
 
+    console.log('emptySKUProducts', emptySKUProducts.slice(0, 3), emptySKUProducts.length)
+    //pasando a draft todos los productos que tienen SKU vacio (son aquellos que han sido versionados antes)
+    for (const prodShop of emptySKUProducts) {
+      await this.shopifyService.updateProductStatus(prodShop.id, 'DRAFT')
+    }
+
+    console.log(idCursosInShopify.slice(0, 3), idCursosInShopify.length);
+    // console.log(dbByIdUnidad.slice(0, 3), dbByIdUnidad.length)
+    console.log('deleteProducts', deleteProducts.slice(0, 3), deleteProducts.length)
+
+    // for (const prd of deleteProducts) {
+    //   const del = await this.shopifyService.deleteShopifyProduct(prd.id);
+    //   if (del.data.productDelete.userErrors.length === 0)
+    //     this.logger.log(`⛔ Product ${prd.id} removed`);
+    //   else
+    //     this.logger.error(`🧨 Errors on (${prd.id}): ${JSON.stringify(del.data.productDelete.userErrors)}`);
+    // }
+
+    // console.log('priceEmptyProducts', priceEmptyProducts.slice(0, 3), priceEmptyProducts.length)
+    // console.log('priceCeroProducts', priceCeroProducts.slice(0, 3), priceCeroProducts.length)
+
+
+    const resultados = this.analizarCambiosProductos(productos, Array.isArray(cursosRelacionados) ? cursosRelacionados : []);
+    this.mostrarEstadisticasCambios(resultados);
+
+    // creando los productos que esten en base de datos y no en shopify
+    const createProducts = resultados.filter(p => p.operation === 'create');
+    for (const element of createProducts) {
+      await this.proccessProdHttp(merchantId, element.idCurso);
+    }
+
+    // actualizando los productos que esten en base de datos y no coincida el shopify
+    const updateProducts = resultados.filter(p => p.operation === 'statusChange');
+
+    for (const element of updateProducts) {
+      await this.proccessProdHttp(merchantId, element.idCurso);
+    }
 
     return {
       ProductosEnShopify: productos.length,
@@ -152,118 +202,342 @@ export class ProductosController {
   }
 
 
+  //function para mostrar estaidsticas del procesmaiento
+  private mostrarEstadisticasCambios(resultados: any[]) {
+    const stats = {
+      create: 0,
+      update: 0,
+      statusChange: 0,
+      delete: 0,
+      none: 0,
+    };
 
-  //verificando productos duplicados
-  @post('/productos/verificando-duplicidades/{merchant_id}')
-  async productDuplicados(
-    @param.path.number('merchant_id') merchantId: number,
-    @requestBody({
-      description: 'Verificando productos duplicados',
-      required: false,
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              // hours: {type: 'number', default: 72, nullable: true}
+    for (const r of resultados) {
+      const operation = r.operation as keyof typeof stats;
+      if (Object.prototype.hasOwnProperty.call(stats, operation)) {
+        stats[operation]++;
+      }
+    }
+
+    console.log('\n📊 Estadísticas de cambios:');
+    console.log(`  ➕ Crear:         ${stats.create}`);
+    console.log(`  ➕ Crear (Sample):         ${JSON.stringify(resultados.filter(r => r.operation === 'create')[0])}`);
+    console.log(`  🔄 Actualizar:    ${stats.update}`);
+    console.log(`  🔄 Actualizar (Sample):    ${JSON.stringify(resultados.filter(r => r.operation === 'update')[0])}`);
+    console.log(`  ⚠️ Cambiar estado: ${stats.statusChange}`);
+    console.log(`  ⚠️ Cambiar estado (Sample): ${JSON.stringify(resultados.filter(r => r.operation === 'statusChange').slice(0, 3))}`);
+    console.log(`  ❌ Eliminar:       ${stats.delete}`);
+    console.log(`  ❌ Eliminar (Sample):       ${JSON.stringify(resultados.filter(r => r.operation === 'delete')[0])}`);
+    console.log(`  ✅ Sin cambios:    ${stats.none}`);
+  }
+
+  /**
+ * Compara productos de base de datos contra Shopify.
+ *
+ * @param productosShopify - Array de productos obtenidos desde Shopify.
+ * @param productosBD - Array de productos obtenidos desde la base de datos.
+ * @returns Array de objetos que indica qué acción tomar con cada producto.
+ */
+  private analizarCambiosProductos(productosShopify: any[] = [], productosBD: any[] = []) {
+    const resultado = [];
+
+    const productosByIdCurso = new Map<string, any>();
+
+    for (const prodShopify of productosShopify) {
+      if (prodShopify.idCurso && prodShopify.sku !== null) {
+        productosByIdCurso.set(prodShopify.idCurso.toString(), prodShopify);
+      }
+    }
+
+    for (const prodBD of productosBD) {
+      const idCurso = prodBD.id.toString();
+      const prodShopify = productosByIdCurso.get(idCurso);
+
+      if (!prodShopify) {
+        // No existe en Shopify => crear
+        resultado.push({
+          idCurso,
+          sku: prodBD.codigo,
+          price: prodBD.precio,
+          handle: null,
+          status: prodBD.activo === 1 ? 'ACTIVE' : 'DRAFT',
+          operation: 'create',
+        });
+        continue;
+      }
+
+      const cambios: string[] = [];
+
+      // if (idCurso === '17690')
+      //   console.log(prodShopify);
+
+      if (prodBD.sku !== prodShopify.sku && prodShopify.sku !== null) cambios.push('sku');
+      if (parseFloat(prodBD.precio) !== parseFloat(prodShopify.price) && prodShopify.sku !== null) cambios.push('price');
+      if ((prodShopify.status === 'ACTIVE' ? 1 : 0) !== prodBD.activo) cambios.push('status');
+
+      const operacion =
+        cambios.includes('sku') || cambios.includes('price')
+          ? 'update'
+          : cambios.includes('status')
+            ? 'statusChange'
+            : 'none';
+
+      resultado.push({
+        idCurso,
+        idShopify: prodShopify.id,
+        sku: prodBD.codigo,
+        price: prodBD.precio,
+        status: prodBD.activo === 1 ? 'ACTIVE' : 'DRAFT',
+        handle: prodShopify.handle,
+        operation: operacion,
+      });
+    }
+
+    // Productos en Shopify que no existen en BD => delete
+    for (const prodShopify of productosShopify) {
+      const idCurso = prodShopify.idCurso?.toString();
+      if (!idCurso || !productosBD.find(p => p.id.toString() === idCurso)) {
+        resultado.push({
+          idCurso: idCurso || null,
+          idShopify: prodShopify.id,
+          sku: prodShopify.sku,
+          price: prodShopify.price,
+          handle: prodShopify.handle,
+          operation: 'delete',
+        });
+      }
+    }
+
+    return resultado;
+  }
+
+
+  async proccessProdHttp(merchantId: number, productId: number) {
+    try {
+      console.log('🔄 [proccessProdHttp] Iniciando solicitud HTTP...', {merchantId, productId});
+
+      const baseUrl = `${process.env.NODE_ENV === 'production' ? 'https' : 'http'}://${process.env.ADMIN_USER}:${process.env.ADMIN_PASSWORD}@${process.env.API_BASE_URL}`;
+      const endpoint = `/productos/syncronize/${merchantId}/${productId}`;
+      const url = `${baseUrl}${endpoint}`;
+
+      console.log('🔗 URL:', url.replace(/:([^\/]+)@/, ':*****@')); // Oculta la contraseña en logs
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      console.log('📡 [proccessProdHttp] Respuesta recibida. Status:', response.status);
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'No se pudo leer el cuerpo del error');
+        throw new Error(`HTTP ${response.status} - ${errorBody}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [proccessProdHttp] Respuesta exitosa:', JSON.stringify(data, null, 2));
+
+      return data;
+    } catch (error) {
+      console.error('❌ [proccessProdHttp] Error:', error.message);
+      throw error; // Propaga el error para que Bull lo reintente
+    }
+  }
+
+
+  /*
+    //verificando existencia de productos en base de datos (pasando a DRAFT aquellos que fueron eliminados en BD anteriormente)
+    @post('/productos/verificando-existencias/{merchant_id}')
+    async productExistencyVerified(
+      @param.path.number('merchant_id') merchantId: number,
+      @requestBody({
+        description: 'Verificando existencia de productos',
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                // hours: {type: 'number', default: 72, nullable: true}
+              },
             },
           },
         },
-      },
-    }) options?: SyncBatchRequest,
-    // @inject('services.QueueService') queueService?: QueueService,
-  ): Promise<{
-    TotalOperations: number;
-    success: boolean;
-    errors: any[]
-  }> {
+      }) options?: SyncBatchRequest,
+      // @inject('services.QueueService') queueService?: QueueService,
+    ): Promise<
+      {
+        ProductosEnShopify: number;
+        ProductosActivosEnBD: number;
+        pasarADraft: number;
+        pasarAActive: number;
+        success: Boolean;
+        errors: any[]
+      }> {
 
-    // -------- BLOCK ajustes de credenciales ----------------
-    // 1. Obtener credenciales del merchant
-    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
 
-    // 2. Configurar el servicio Shopify con estas credenciales
-    await this.shopifyService.setCredentials(credentials);
-    //--------- END BLOCK -----------------------------------
+      // 2. Configurar el servicio Shopify con estas credenciales
+      await this.shopifyService.setCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
 
-    const items = await this.shopifyService.getAllShopifyProductsRepeated();
-    console.log(items[0])
+      const productos = await this.shopifyService.getAllShopifyProductsRepeated();
+      console.log('Productos en Shopify', productos.length);
 
-    //------------------------------------------------------------------------
-    // 1. Agrupar por SKU
-    const skuMap: Record<string, ProductItem[]> = {};
-
-    for (const item of items) {
-      if (!item.sku) continue; // opcional: ignorar si no hay SKU
-      if (!skuMap[item.sku]) {
-        skuMap[item.sku] = [];
-      }
-      skuMap[item.sku].push(item);
-    }
-
-    // 2. Filtrar SKUs duplicados
-    const duplicatedSkus: GroupedDuplicate[] = Object.entries(skuMap)
-      .filter(([_, products]) => products.length > 1)
-      .map(([sku, products]) => ({
-        sku,
-        products,
-      }));
+      const qDB = `SELECT u.id FROM productos p JOIN unidades u JOIN unidades_merchants um ON um.unidad_id =u.id AND u.id=p.unidad_id AND u.activo=1 AND um.merchant_id =?`;
+      const cursosRelacionados = await this.productosRepository.execute(qDB, [merchantId]);
+      console.log('Productos Activos en BD', cursosRelacionados.length)
 
 
-    // console.log(duplicatedSkus[0])
+      // Paso 1: obtener IDs del segundo array
+      const cursosRelacionadosIds = new Set(cursosRelacionados.map((c: {id: any;}) => c.id.toString()));
 
-    //---------------------------------------------------------
-    const ddddd = duplicatedSkus.slice(0, 100);
-    // const logFilePath = path.join(__dirname, 'deleted_ids.log');
-    for (const dup of ddddd) {
-      this.logger.log(`Verificando ${dup.sku}`);
+      // Paso 2: clasificar
+      const debenEstarEnDraft = [];
+      const debenActivarse = [];
+      const draftProccess = [];
+      const activeProccess = [];
 
-      // SELECT unidad_id,url FROM productos WHERE codigo = "151929-2408"
-      const dRes = await this.productosRepository.execute("SELECT unidad_id,LOWER(url) as url FROM productos WHERE codigo = ?", [dup.sku]);
+      if (cursosRelacionados.length > 0)
+        for (const producto of productos) {
+          const {idCurso, status, id} = producto;
 
-      const d = dRes[0];
-      const ids2delete = dup.products?.filter((pd: {handle: any;}) => pd.handle !== d?.url).map(m => m.id);
-
-      // Guarda en log solo si hay IDs para eliminar
-      if (ids2delete && ids2delete.length > 0) {
-        // console.log(ids2delete)
-        // const logEntry = {
-        //   timestamp: new Date().toISOString(),
-        //   sku: dup.sku,
-        //   ids2delete,
-        // };
-
-        for (const id of ids2delete) {
-          const del = await this.shopifyService.deleteShopifyProduct(id);
-          if (del.data.productDelete.userErrors.length === 0)
-            this.logger.log(`⛔ Product ${id} removed`);
-          else
-            this.logger.error(`🧨 Errors on (${id}): ${JSON.stringify(del.data.productDelete.userErrors)}`);
+          if (!cursosRelacionadosIds.has(idCurso) && status === "ACTIVE") {
+            // No está en cursosRelacionados ⇒ debe estar en DRAFT
+            debenEstarEnDraft.push(idCurso);
+            draftProccess.push(id);
+          } else if (status === 'DRAFT') {
+            // Está en cursosRelacionados pero está en DRAFT ⇒ debe activarse
+            debenActivarse.push(idCurso);
+            activeProccess.push(id);
+          }
         }
 
-        // fs.appendFileSync(logFilePath, JSON.stringify(logEntry) + '\n', 'utf8');
-      }
-      /*
+      console.log('Deben estar en DRAFT:', debenEstarEnDraft.length, draftProccess[0]);
+      console.log('Deben activarse:', debenActivarse.length, activeProccess[0]);
+
+      // for (const id2Draft of draftProccess) {
+      //   const rDraft = await this.shopifyService.updateProductStatus(id2Draft, 'draft');
+      //   this.logger.log(`🧨 Pass to DRAFT ${id2Draft}, status: ${JSON.stringify(rDraft.data.productSet.userErrors)}`);
+      // }
+      // for (const id2active of activeProccess) {
+      //   const rActive = await this.shopifyService.updateProductStatus(id2active, 'active');
+      //   this.logger.log(`✅ Pass to ACTIVE ${id2active}, status: ${JSON.stringify(rActive.data.productSet.userErrors)}`);
+      // }
 
 
-            //-------------block para actualizar el prod------------------------------------------
-            const product = await this.productosRepository.findByIdMine(d.unidad_id, null, {merchantId});
-            // console.log(JSON.stringify(product));
-            const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
-
-            const resultSync = await this.shopifyService.createShopifyProduct(shopifyProduct);
-            console.log('SyncProc', resultSync);
-
-            //-------------------------------------------------------
-      */
+      return {
+        ProductosEnShopify: productos.length,
+        ProductosActivosEnBD: cursosRelacionados.length,
+        pasarADraft: debenEstarEnDraft.length,
+        pasarAActive: debenActivarse.length,
+        success: true,
+        errors: []
+      };
     }
 
-    return {
-      TotalOperations: duplicatedSkus.length,
-      success: true,
-      errors: []
-    };
-  }
+
+
+    //verificando productos duplicados
+    @post('/productos/verificando-duplicidades/{merchant_id}')
+    async productDuplicados(
+      @param.path.number('merchant_id') merchantId: number,
+      @requestBody({
+        description: 'Verificando productos duplicados',
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                // hours: {type: 'number', default: 72, nullable: true}
+              },
+            },
+          },
+        },
+      }) options?: SyncBatchRequest,
+      // @inject('services.QueueService') queueService?: QueueService,
+    ): Promise<{
+      TotalOperations: number;
+      success: boolean;
+      errors: any[]
+    }> {
+
+      // -------- BLOCK ajustes de credenciales ----------------
+      // 1. Obtener credenciales del merchant
+      const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+      // 2. Configurar el servicio Shopify con estas credenciales
+      await this.shopifyService.setCredentials(credentials);
+      //--------- END BLOCK -----------------------------------
+
+      const items = await this.shopifyService.getAllShopifyProductsRepeated();
+      console.log(items[0])
+
+      //------------------------------------------------------------------------
+      // 1. Agrupar por SKU
+      const skuMap: Record<string, ProductItem[]> = {};
+
+      for (const item of items) {
+        if (!item.sku) continue; // opcional: ignorar si no hay SKU
+        if (!skuMap[item.sku]) {
+          skuMap[item.sku] = [];
+        }
+        skuMap[item.sku].push(item);
+      }
+
+      // 2. Filtrar SKUs duplicados
+      const duplicatedSkus: GroupedDuplicate[] = Object.entries(skuMap)
+        .filter(([_, products]) => products.length > 1)
+        .map(([sku, products]) => ({
+          sku,
+          products,
+        }));
+
+
+      // console.log(duplicatedSkus[0])
+
+      //---------------------------------------------------------
+      const ddddd = duplicatedSkus.slice(0, 100);
+      // const logFilePath = path.join(__dirname, 'deleted_ids.log');
+      for (const dup of ddddd) {
+        this.logger.log(`Verificando ${dup.sku}`);
+
+        // SELECT unidad_id,url FROM productos WHERE codigo = "151929-2408"
+        const dRes = await this.productosRepository.execute("SELECT unidad_id,LOWER(url) as url FROM productos WHERE codigo = ?", [dup.sku]);
+
+        const d = dRes[0];
+        const ids2delete = dup.products?.filter((pd: {handle: any;}) => pd.handle !== d?.url).map(m => m.id);
+
+        // Guarda en log solo si hay IDs para eliminar
+        if (ids2delete && ids2delete.length > 0) {
+
+          for (const id of ids2delete) {
+            const del = await this.shopifyService.deleteShopifyProduct(id);
+            if (del.data.productDelete.userErrors.length === 0)
+              this.logger.log(`⛔ Product ${id} removed`);
+            else
+              this.logger.error(`🧨 Errors on (${id}): ${JSON.stringify(del.data.productDelete.userErrors)}`);
+          }
+
+          // fs.appendFileSync(logFilePath, JSON.stringify(logEntry) + '\n', 'utf8');
+        }
+
+      }
+
+      return {
+        TotalOperations: duplicatedSkus.length,
+        success: true,
+        errors: []
+      };
+    }
+
+    */
 
 
   //sincronizando 1 producto en 1 mercado
@@ -396,7 +670,7 @@ export class ProductosController {
     //--------- END BLOCK -----------------------------------
 
     const product = await this.productosRepository.findByIdMine(productId, null, {merchantId});
-    // console.log(JSON.stringify(product));
+
     const shopifyProduct = {...this.mapToShopifyFormat(product, product.unidadId), merchantId: merchantId};
 
     const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
@@ -568,476 +842,6 @@ export class ProductosController {
   }
 
 
-  //---------- BLOCK sincro ENDPOINTS-------------------------------------------
-  /*
-
-  @post('/productos/find-prod-not-in-shopify')
-  async findProdNotInShopify(
-    @requestBody({
-      description: 'Opciones para la sincronización por lotes',
-      required: false,
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              batchSize: {type: 'number', default: 100},
-              limit: {type: 'number', default: 1, nullable: true, },
-              merchant: {type: 'number', default: 1, nullable: true, },
-            },
-          },
-        },
-      },
-    }) options?: SyncBatchRequest,
-    @inject('services.QueueService') queueService?: QueueService,
-  ): Promise<{
-    totalProducts: number;
-    batchesCreated: number;
-    message: string;
-  }> {
-    const batchSize = options?.batchSize ?? 100;
-    const pageSize = 200; // Productos a cargar por consulta
-    let offset = 0;
-    let totalProcessed = 0;
-    let totalBatches = 0;
-
-
-    // Procesamiento paginado para todos los productos
-    let hasMore = true;
-
-    while (hasMore) {
-      // 1. Cargar una página de productos
-      const {products: productos, total} = await this.productosRepository.findByMerchantWithoutSYNC(
-        options?.merchant ?? 1,
-        {
-          limit: pageSize,
-          offset,
-        }
-      );
-
-      // console.log('Total Of Products', total)
-
-      if (productos.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      // 2. Transformar y procesar en lotes pequeños
-      const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
-      const batches = this.createBatches(shopifyProducts, batchSize);
-
-      // 3. Enviar a la cola
-      if (queueService) {
-        for (const batch of batches) {
-          await queueService.addProductBatchToSync(batch);
-          totalBatches++;
-        }
-      }
-
-      totalProcessed += productos.length;
-      offset += pageSize;
-
-      // Liberar memoria
-      console.log(`liberando memoria`)
-      await new Promise(resolve => setImmediate(resolve));
-      console.log(`delay para (total: ${total}, offet: ${offset}, batch:${totalBatches}, totalProcessed: ${totalProcessed})`)
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-
-    return {
-      totalProducts: totalProcessed,
-      batchesCreated: totalBatches,
-      message: `Sincronización masiva iniciada. ${totalProcessed} productos en ${totalBatches} lotes de ${batchSize}.`,
-    };
-  }
-
-  //--------------------------------------------------
-  @post('/productos/sync-batch-to-shopify-new')
-  async syncBatchToShopifyNEW(
-    @requestBody({
-      description: 'Opciones para la sincronización por lotes',
-      required: false,
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              batchSize: {type: 'number', default: 100},
-              productIds: {
-                type: 'array',
-                items: {type: 'number'},
-                nullable: true,
-              },
-              limit: {type: 'number', default: 1, nullable: true, },
-              merchant: {type: 'number', default: 1, nullable: true, },
-            },
-          },
-        },
-      },
-    }) options?: SyncBatchRequest,
-    @inject('services.QueueService') queueService?: QueueService,
-  ): Promise<{
-    totalProducts: number;
-    batchesCreated: number;
-    message: string;
-  }> {
-    const batchSize = options?.batchSize ?? 100;
-    const pageSize = 200; // Productos a cargar por consulta
-    let offset = 0;
-    let totalProcessed = 0;
-    let totalBatches = 0;
-
-    // Si hay IDs específicos, procesarlos primero
-    if (options?.productIds?.length) {
-      const productos = [];
-      for (const prodId of options.productIds) {
-        try {
-          const product = await this.productosRepository.findByIdMine(prodId);
-          if (product) productos.push(product);
-        } catch (error) {
-          console.log(`🔥 Omitiendo ID:${prodId}, ERROR: ${error.toString()}`);
-        }
-      }
-
-      const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
-      const batches = this.createBatches(shopifyProducts, batchSize);
-
-      if (queueService) {
-        for (const batch of batches) {
-          await queueService.addProductBatchToSync(batch);
-          totalBatches++;
-        }
-      }
-
-      totalProcessed = productos.length;
-    } else {
-      // Procesamiento paginado para todos los productos
-      let hasMore = true;
-
-      while (hasMore) {
-        // 1. Cargar una página de productos
-        const {products: productos, total} = await this.productosRepository.findByMerchantWithPagination(
-          options?.merchant ?? 1,
-          {
-            limit: pageSize,
-            offset,
-            // where: {activo: 1} // Filtro opcional
-          }
-        );
-
-        // console.log('Total Of Products', total)
-
-        if (productos.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        // 2. Transformar y procesar en lotes pequeños
-        const shopifyProducts = productos.map(p => this.mapToShopifyFormat(p, p.unidadId));
-        const batches = this.createBatches(shopifyProducts, batchSize);
-
-        // 3. Enviar a la cola
-        if (queueService) {
-          for (const batch of batches) {
-            await queueService.addProductBatchToSync(batch);
-            totalBatches++;
-          }
-        }
-
-        totalProcessed += productos.length;
-        offset += pageSize;
-
-        // Liberar memoria
-        console.log(`liberando memoria`)
-        await new Promise(resolve => setImmediate(resolve));
-        console.log(`delay para (total: ${total}, offet: ${offset}, batch:${totalBatches}, totalProcessed: ${totalProcessed})`)
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-
-    return {
-      totalProducts: totalProcessed,
-      batchesCreated: totalBatches,
-      message: `Sincronización masiva iniciada. ${totalProcessed} productos en ${totalBatches} lotes de ${batchSize}.`,
-    };
-  }
-
-
-  //--------------------------------------------------
-
-  // endpoint para sincronizacion en lotes
-  @post('/productos/sync-batch-to-shopify', {
-    responses: {
-      '200': {
-        description: 'Inicia la sincronización masiva de productos con Shopify',
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              properties: {
-                totalProducts: {type: 'number'},
-                batchesCreated: {type: 'number'},
-                message: {type: 'string'},
-              },
-            },
-          },
-        },
-      },
-    },
-  })
-  async syncBatchToShopify(
-    @requestBody({
-      description: 'Opciones para la sincronización por lotes',
-      required: false,
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              batchSize: {type: 'number', default: 100},
-              productIds: {
-                type: 'array',
-                items: {type: 'number'},
-                nullable: true,
-              },
-              limit: {type: 'number', default: 1, nullable: true, },
-              merchant: {type: 'number', default: 1, nullable: true, },
-            },
-          },
-        },
-      },
-    })
-    options?: SyncBatchRequest,
-    @inject('services.QueueService')
-    queueService?: QueueService,
-  ): Promise<{
-    totalProducts: number;
-    batchesCreated: number;
-    message: string;
-  }> {
-    const batchSize = options?.batchSize ?? 100;
-
-    // Obtener todos los productos o los específicos si se proporcionan IDs
-    let productos: Productos[] = [];
-
-    // console.log(options);
-
-    if (options?.productIds && options.productIds.length > 0) {
-
-      for (const prodId of options.productIds) {
-        try {
-          const product = await this.productosRepository.findByIdMine(prodId);
-          if (product)
-            productos.push(product);
-        } catch (error) {
-          console.log(`🔥 Omitiendo ID:${prodId}, ERROR: ${error.toString()}`)
-        }
-
-      }
-
-    } else {
-
-      productos = await this.productosRepository.findByMerchant(options?.merchant ?? 1, {
-        //where: {activo: 1},
-        limit: options?.limit ?? 10
-      });
-    }
-
-    // Transformar productos al formato de Shopify
-    const shopifyProducts: ProductData[] = productos.map(producto => {
-      return this.mapToShopifyFormat(producto, producto.unidadId)
-    });
-
-    // console.log(JSON.stringify(shopifyProducts))
-
-    // Procesar en lotes
-    const batches: ProductData[][] = [];
-    for (let i = 0; i < shopifyProducts.length; i += batchSize) {
-      batches.push(shopifyProducts.slice(i, i + batchSize));
-    }
-
-    // Añadir lotes a la cola
-    if (queueService) {
-      for (const batch of batches) {
-        await queueService.addProductBatchToSync(batch);
-      }
-
-    } else {
-      throw new Error('QueueService no está disponible');
-    }
-
-    return {
-      totalProducts: shopifyProducts.length,
-      batchesCreated: batches.length,
-      message: `Sincronización masiva iniciada. ${shopifyProducts.length} productos en ${batches.length} lotes de ${batchSize}.`,
-    };
-  }
-
-  @get('/productos/{id}')
-  @response(200, {
-    description: 'Productos model instance',
-    content: {
-      'application/json': {
-        schema: getModelSchemaRef(Productos, {includeRelations: true}),
-      },
-    },
-  })
-  async findById(
-    @param.path.number('id') id: number
-  ): Promise<ProductosWithRelations> {
-    const d = await this.productosRepository.findByIdMine(id);
-    return d;
-  }
-
-  @post('/productos/{id}/sync-to-shopify', {
-    responses: {
-      '200': {
-        description: 'Sincronizar producto con Shopify',
-        content: {'application/json': {schema: {'x-ts-type': 'Object'}}},
-      },
-    },
-  })
-  async syncToShopify(
-    @param.path.number('id') id: number,
-  ): Promise<object> {
-    // 1. Obtener el producto de tu base de datos
-    const producto = await this.productosRepository.findByIdMine(id);
-
-
-
-    // 2. Transformar a formato Shopify
-    const shopifyProduct = this.mapToShopifyFormat(producto, id);
-    console.log('Producto', shopifyProduct)
-    // 3. Sincronizar con Shopify
-    const result = await this.shopifyService.createShopifyProduct(shopifyProduct);
-
-    //  4. Actualizar el producto con el ID de Shopify
-
-    const error = {};//await this.updateUnidadesData(result, id);
-
-
-
-    return {...result, error};
-  }
-  */
-
-  //------END BLOCK ------------------------------------------------------------
-
-
-  //--------- BLOCK endpoints CRUD ---------------------------------------------
-  /*
-
-  @post('/productos')
-  @response(200, {
-    description: 'Productos model instance',
-    content: {'application/json': {schema: getModelSchemaRef(Productos)}},
-  })
-  async create(
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Productos, {
-            title: 'NewProductos',
-            exclude: ['unidad_id'],
-          }),
-        },
-      },
-    })
-    productos: Omit<Productos, 'unidad_id'>,
-  ): Promise<Productos> {
-    return this.productosRepository.create(productos);
-  }
-
-  @get('/productos/count')
-  @response(200, {
-    description: 'Productos model count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async count(
-    @param.where(Productos) where?: Where<Productos>,
-  ): Promise<Count> {
-    return this.productosRepository.count(where);
-  }
-
-  @get('/productos')
-  @response(200, {
-    description: 'Array of Productos model instances',
-    content: {
-      'application/json': {
-        schema: {
-          type: 'array',
-          items: getModelSchemaRef(Productos, {includeRelations: true}),
-        },
-      },
-    },
-  })
-  async find(
-    @param.filter(Productos) filter?: Filter<Productos>,
-  ): Promise<Productos[]> {
-    return this.productosRepository.find(filter);
-  }
-
-  @patch('/productos')
-  @response(200, {
-    description: 'Productos PATCH success count',
-    content: {'application/json': {schema: CountSchema}},
-  })
-  async updateAll(
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Productos, {partial: true}),
-        },
-      },
-    })
-    productos: Productos,
-    @param.where(Productos) where?: Where<Productos>,
-  ): Promise<Count> {
-    return this.productosRepository.updateAll(productos, where);
-  }
-
-  @patch('/productos/{id}')
-  @response(204, {
-    description: 'Productos PATCH success',
-  })
-  async updateById(
-    @param.path.number('id') id: number,
-    @requestBody({
-      content: {
-        'application/json': {
-          schema: getModelSchemaRef(Productos, {partial: true}),
-        },
-      },
-    })
-    productos: Productos,
-  ): Promise<void> {
-    await this.productosRepository.updateById(id, productos);
-  }
-
-  @put('/productos/{id}')
-  @response(204, {
-    description: 'Productos PUT success',
-  })
-  async replaceById(
-    @param.path.number('id') id: number,
-    @requestBody() productos: Productos,
-  ): Promise<void> {
-    await this.productosRepository.replaceById(id, productos);
-  }
-
-  @del('/productos/{id}')
-  @response(204, {
-    description: 'Productos DELETE success',
-  })
-  async deleteById(@param.path.number('id') id: number): Promise<void> {
-    await this.productosRepository.deleteById(id);
-  }
-    */
-
-  //--------- END BLOCK --------------------------------------------------------
-
-
   //---BLOCK funciones auxiliares ----------------------------------------------
 
   /**
@@ -1085,7 +889,7 @@ export class ProductosController {
       description: producto.descripcion,
       vendor: producto?.extraData?.inst_educ_propietaria ?? '',
       productType: producto?.extraData?.product_type ?? 'Curso',
-      // status: producto?.publicado ? 'active' : 'draft',
+      status: producto?.extraData?.activo === 1 ? 'ACTIVE' : 'DRAFT',
       // variants: [{
       price: producto.precio ?? 0,
       sku: producto.codigo ?? '',
@@ -1248,7 +1052,7 @@ export class ProductosController {
         {
           namespace: 'custom',
           key: 'temario',
-          value: producto.temario ?? '',
+          value: (producto.temario ?? '').slice(0, 65536),
           type: 'multi_line_text_field'
         },
         {
@@ -1320,7 +1124,7 @@ export class ProductosController {
         {
           namespace: 'custom',
           key: 'url_video',
-          value: producto.urlReferenciaVideo?.toString() ?? '',
+          value: (producto.urlReferenciaVideo?.toString() ?? '').trim(),
           type: 'url'
         },
         {
@@ -1338,7 +1142,7 @@ export class ProductosController {
         {
           namespace: 'custom',
           key: 'convalidaciones',
-          value: producto.convalidaciones ?? '',
+          value: producto?.convalidaciones ?? '',
           type: 'single_line_text_field'
         },
         {

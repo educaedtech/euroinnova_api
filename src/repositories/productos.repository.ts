@@ -278,7 +278,7 @@ export class ProductosRepository extends DefaultCrudRepository<
   ): Promise<ProductosWithRelations> {
 
     const {merchantId} = options;
-    console.log('MERCHANT', merchantId)
+    // console.log('MERCHANT', merchantId)
 
     try {
       // Obtener el producto base SIN incluir propiedades no mapeadas
@@ -500,10 +500,12 @@ export class ProductosRepository extends DefaultCrudRepository<
               JOIN instituciones_educativas ie ON ie.id = uie.institucion_educativa_id
               AND uie.unidad_id = u.id
               AND uie.propietaria = 1
+              LIMIT 1
             ) AS inst_educ_propietaria,
             p.codigo_afo_educalab AS cod_scorm,
             ( SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id ) AS pdf_temario,
-            p.descripcion_seo
+            p.descripcion_seo,
+            um.activo
           FROM
             productos p
             LEFT JOIN unidades u ON p.unidad_id = u.id
@@ -535,6 +537,7 @@ export class ProductosRepository extends DefaultCrudRepository<
         idioma_shopify: null
       };
       const {
+        activo,
         pdf_temario,
         descripcion_seo,
         familia,
@@ -566,6 +569,7 @@ export class ProductosRepository extends DefaultCrudRepository<
       } = extraData[0] ?? DEFAULT_EXTRADATA;
 
       producto.extraData = {
+        activo,
         pdf_temario,
         descripcion_seo,
         familia,

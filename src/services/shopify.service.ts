@@ -270,8 +270,8 @@ export class ShopifyService {
 
       const productInput = {
         id: gid,
-        status: 'ACTIVE',
-        title: product.tituloComercial ? this.escapeGraphQLString(product.tituloComercial) : this.escapeGraphQLString(product.title),
+        status: product.status,
+        title: (product.tituloComercial ? this.escapeGraphQLString(product.tituloComercial) : this.escapeGraphQLString(product.title)).slice(0, 255),
         handle: shopifyId ? undefined : product.handle,
         descriptionHtml: `<p>${this.escapeHtml(product.description ?? 'Descripción del producto')}</p>`,
         productType: product.productType ?? 'Curso',
@@ -280,7 +280,7 @@ export class ShopifyService {
         variants: [],
         seo: product.seo ?? undefined,
         tags: product.metafields.find(mt => mt.key === "collection_shopify")?.value ?? '',
-        metafields: product.metafields ? product?.metafields?.filter(m => m.value !== '').map(meta => {
+        metafields: product.metafields ? product?.metafields?.filter(m => m.value.trim() !== '').map(meta => {
           let processedValue = meta.value;
 
           // Eliminar saltos de línea y múltiples espacios
@@ -298,7 +298,8 @@ export class ShopifyService {
       };
 
 
-      // console.log('TAGS', productInput.tags);
+      // console.log('Shopify Product', JSON.stringify(productInput, null, 2));
+
 
 
 
@@ -2293,6 +2294,7 @@ export class ShopifyService {
             sku:variants(first: 1) {
               nodes {
                 sku
+                price
               }
             }
           }
@@ -2303,7 +2305,7 @@ export class ShopifyService {
       }
     }`;
 
-    const allProducts: {id: string; handle: string; sku: string, idCurso?: string, status?: string}[] = [];
+    const allProducts: {id: string; handle: string; sku: string, idCurso?: string, status?: string, price: string}[] = [];
 
     let hasNextPage = true;
     let after: string | null = null;
@@ -2322,6 +2324,7 @@ export class ShopifyService {
           idCurso: product.idCurso?.value,
           handle: product.handle,
           sku: product.sku.nodes[0].sku,
+          price: product.sku.nodes[0].price
         });
 
 
