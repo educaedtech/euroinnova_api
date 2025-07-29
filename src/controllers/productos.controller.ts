@@ -106,7 +106,13 @@ export class ProductosController {
     // actualizando los productos que tienen el metafield productos relacionados con datos
 
     for (const element of productosFiltrados) {
-      await this.proccessProdHttp(merchantId, parseInt(element?.idCurso ?? '-1'));
+      try {
+        await this.proccessProdHttp(merchantId, parseInt(element?.idCurso ?? '-1'));
+
+      } catch (error) {
+        console.log('Error', error)
+      }
+
     }
 
     return {
