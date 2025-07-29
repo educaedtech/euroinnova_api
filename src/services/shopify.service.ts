@@ -322,7 +322,7 @@ export class ShopifyService {
       productInput.metafields.push({
         namespace: 'custom',
         key: 'productos_relacionados_por_idiomas',
-        value: "",
+        value: "[]",
         type: 'list.product_reference'
       });
 
