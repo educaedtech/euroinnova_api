@@ -59,6 +59,63 @@ export class ProductosController {
     private merchantCredentials: MerchantCredentialsService,
   ) { }
 
+  //verificando productos con sku vacios
+  @post('/productos/limpiar-idiomas-relacionados/{merchant_id}')
+  async productsWithIdiomasRelacionados(
+    @param.path.number('merchant_id') merchantId: number,
+    @requestBody({
+      description: 'Verificando productos entre shopify y la base de datos',
+      required: false,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              // hours: {type: 'number', default: 72, nullable: true}
+            },
+          },
+        },
+      },
+    }) options?: SyncBatchRequest,
+    // @inject('services.QueueService') queueService?: QueueService,
+  ): Promise<
+    {
+      ProductosEnShopify: number;
+      ProductosRelacionadosPorIdioma: number;
+      success: Boolean;
+      errors: any[]
+    }> {
+
+    // -------- BLOCK ajustes de credenciales ----------------
+    // 1. Obtener credenciales del merchant
+    const credentials = await this.merchantCredentials.getShopifyCredentials(merchantId);
+
+    // 2. Configurar el servicio Shopify con estas credenciales
+    await this.shopifyService.setCredentials(credentials);
+    //--------- END BLOCK -----------------------------------
+
+    const productos = await this.shopifyService.getAllShopifyProductsWithRelationsLangs();
+    console.log('Productos en Shopify', productos.length, productos[0]);
+
+    const productosFiltrados = productos.filter(p =>
+      p.productsRelation
+    );
+
+    console.log('Productos Filtrados en Shopify con Idiomas relacionados', productosFiltrados.length, productosFiltrados[0]);
+
+    // actualizando los productos que tienen el metafield productos relacionados con datos
+
+    for (const element of productosFiltrados) {
+      await this.proccessProdHttp(merchantId, parseInt(element?.idCurso ?? '-1'));
+    }
+
+    return {
+      ProductosEnShopify: productos.length,
+      ProductosRelacionadosPorIdioma: 0,
+      success: true,
+      errors: []
+    };
+  }
 
 
   //verificando productos con sku vacios

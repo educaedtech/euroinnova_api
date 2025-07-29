@@ -303,20 +303,28 @@ export class ShopifyService {
 
 
 
-      // buscando los productos relacionados segun title
-      if (gid !== undefined) {
-        const prodRelations = await this.getProductsRelationsByLang(gid ?? '', productInput.title);
+      // // buscando los productos relacionados segun title
+      // if (gid !== undefined) {
+      //   const prodRelations = await this.getProductsRelationsByLang(gid ?? '', productInput.title);
 
-        if (prodRelations.length > 0) {
-          this.logger.log(`ℹ️ Relaciones de Producto (${product.sku})  en Merchant( ${merchantId} ) ${JSON.stringify(prodRelations.map((pp: any) => pp.id))}`)
-          productInput.metafields.push({
-            namespace: 'custom',
-            key: 'productos_relacionados_por_idiomas',
-            value: prodRelations.length > 0 ? JSON.stringify(prodRelations.map((p: {id: any;}) => p.id)) : "",
-            type: 'list.product_reference'
-          });
-        }
-      }
+      //   if (prodRelations.length > 0) {
+      //     this.logger.log(`ℹ️ Relaciones de Producto (${product.sku})  en Merchant( ${merchantId} ) ${JSON.stringify(prodRelations.map((pp: any) => pp.id))}`)
+      //     productInput.metafields.push({
+      //       namespace: 'custom',
+      //       key: 'productos_relacionados_por_idiomas',
+      //       value: prodRelations.length > 0 ? JSON.stringify(prodRelations.map((p: {id: any;}) => p.id)) : "",
+      //       type: 'list.product_reference'
+      //     });
+      //   }
+      // }
+
+      // limpiando los productos relacionados
+      productInput.metafields.push({
+        namespace: 'custom',
+        key: 'productos_relacionados_por_idiomas',
+        value: "",
+        type: 'list.product_reference'
+      });
 
       let needsUpd = true;
       if (gid !== undefined) {
@@ -2325,6 +2333,65 @@ export class ShopifyService {
           handle: product.handle,
           sku: product.sku.nodes[0].sku,
           price: product.sku.nodes[0].price
+        });
+
+
+      }
+
+      this.logger.log(`➕ Founded (${allProducts.length}) productos`)
+      hasNextPage = response.data.products.pageInfo.hasNextPage;
+      // hasNextPage = false;
+      after = hasNextPage ? edges[edges.length - 1].cursor : null;
+
+
+    }
+
+    return allProducts;
+  }
+
+  async getAllShopifyProductsWithRelationsLangs() {
+    const q = `query GetAllProducts($after: String) {
+      products(first: 250, after: $after) {
+        edges {
+          cursor
+          node {
+            id
+            handle
+            title
+            status
+            idCurso:metafield(namespace:"custom",key:"id_curso"){
+              value
+            }
+            productsRelation:metafield(namespace:"custom",key:"productos_relacionados_por_idiomas"){
+              value
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
+    }`;
+
+    const allProducts: {id: string; handle: string; idCurso?: string, status?: string, productsRelation?: string}[] = [];
+
+    let hasNextPage = true;
+    let after: string | null = null;
+
+    while (hasNextPage) {
+      const response = await this.makeShopifyRequest(q, {
+        after: after
+      });
+
+      const edges = response.data.products.edges;
+      for (const edge of edges) {
+        const product = edge.node;
+        allProducts.push({
+          id: product.id,
+          status: product.status,
+          idCurso: product.idCurso?.value,
+          handle: product.handle,
+          productsRelation: product.productsRelation?.value,
         });
 
 
