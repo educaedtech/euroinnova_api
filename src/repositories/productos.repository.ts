@@ -505,7 +505,8 @@ export class ProductosRepository extends DefaultCrudRepository<
             p.codigo_afo_educalab AS cod_scorm,
             ( SELECT umi.url_pdf FROM unidades_merchants_idiomas umi WHERE umi.unidad_id = p.unidad_id ) AS pdf_temario,
             p.descripcion_seo,
-            um.activo
+            um.activo,
+						CONCAT(p.duracion_tutorizacion,' ',(SELECT ute.nombre FROM unidades_tiempo ute WHERE ute.id =p.duracion_tutorizacion_unidad_tiempo_id)) as tutorizacion
           FROM
             productos p
             LEFT JOIN unidades u ON p.unidad_id = u.id
@@ -537,6 +538,7 @@ export class ProductosRepository extends DefaultCrudRepository<
         idioma_shopify: null
       };
       const {
+        tutorizacion,
         activo,
         pdf_temario,
         descripcion_seo,
@@ -569,6 +571,7 @@ export class ProductosRepository extends DefaultCrudRepository<
       } = extraData[0] ?? DEFAULT_EXTRADATA;
 
       producto.extraData = {
+        tutorizacion,
         activo,
         pdf_temario,
         descripcion_seo,

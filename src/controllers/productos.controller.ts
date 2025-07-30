@@ -988,6 +988,12 @@ export class ProductosController {
       return [
         {
           namespace: 'custom',
+          key: 'duracion_tutorizacion',
+          value: producto?.extraData?.tutorizacion ?? "",
+          type: 'single_line_text_field'
+        },
+        {
+          namespace: 'custom',
           key: 'pdf_temario',
           value: producto?.extraData?.pdf_temario ?? "",
           type: 'url'
