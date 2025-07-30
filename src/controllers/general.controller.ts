@@ -56,6 +56,164 @@ export class GeneralController {
   /**
    * Endpoint para recibir el webhook y gestionar colecciones de productos
    */
+  @post('/general/migrate-metafields/{merchant_origen}-to-{merchant_destino}')
+  @response(200, {
+    description: 'Migrate Metafields from one Merchant to another',
+    content: {
+      'application/json': {
+        schema: {
+          type: 'json',
+        },
+      },
+    },
+  })
+  async migrateMetafieldsFromMerchants(
+    @param.path.number('merchant_origen') merchantOrigen: number,
+    @param.path.number('merchant_destino') merchantDestino: number,
+    @requestBody({
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object'
+          },
+        },
+      },
+    })
+    order: any,
+  ): Promise<{message: string, results: any}> {
+    try {
+
+
+      const credencialesOrigen = await this.merchantCredentials.getShopifyCredentials(merchantOrigen);
+
+      // buscar los metafields de productos para el merchant origen
+      const query = `query MetafieldDefinitions($ownerType: MetafieldOwnerType!, $first: Int) {
+                        metafieldDefinitions(ownerType: $ownerType, first: $first) {
+                          nodes {
+                            name
+                            description
+                            namespace
+                            key
+                            type {
+                                name
+                              }
+                            access{
+                                storefront
+                                admin
+                                customerAccount
+                              }
+                            capabilities{
+                                adminFilterable{
+                                    enabled
+                                }
+                                smartCollectionCondition{
+                                    enabled
+                                }
+                                uniqueValues{
+                                    enabled
+                                }
+                              }
+                              pinnedPosition
+                              validations{
+                                  name
+                                  value
+                                }
+                          }
+                        }
+                      }`;
+
+      const ownersTypes = ["PRODUCT", "PRODUCTVARIANT", "COLLECTION", "CUSTOMER", "ORDER", "SHOP", "BLOG", "ARTICLE", "PAGE"];
+
+      const results = [];
+      for (const ownerType of ownersTypes) {
+        await this.shopifyService.setCredentials(credencialesOrigen);
+
+        const metaResponse = await this.shopifyService.makeShopifyRequest(query, {
+          "ownerType": ownerType,
+          "first": 250
+        });
+        console.log('lentgh', metaResponse.data.metafieldDefinitions.nodes.length);
+        //.filter((m: {key: string;}) => m.key === "related_products_display") //
+        const metafields = metaResponse.data.metafieldDefinitions.nodes;//.slice(0, 1);
+        if (metafields.length > 0) {
+          const credencialesDestino = await this.merchantCredentials.getShopifyCredentials(merchantDestino);
+          await this.shopifyService.setCredentials(credencialesDestino);
+          const query2 = `mutation CreateMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+                        metafieldDefinitionCreate(definition: $definition) {
+                          createdDefinition {
+                            id
+                            name
+                          }
+                          userErrors {
+                            field
+                            message
+                            code
+                          }
+                        }
+                      }`;
+          for (const metaObj of metafields) {
+            const var2create = {
+              definition: {
+                name: metaObj.name,
+                namespace: metaObj.namespace,
+                key: metaObj.key,
+                description: metaObj.description,
+                type: metaObj.type.name,
+                ownerType: ownerType,
+                access: {
+                  storefront: metaObj.access.storefront,
+                  // admin: metaObj.access.admin.replace('PUBLIC', 'MERCHANT'),
+                  // customerAccount: metaObj.access.customerAccount
+                },
+                capabilities: {
+                  adminFilterable: {
+                    enabled: metaObj.capabilities.adminFilterable.enabled
+                  },
+                  smartCollectionCondition: {
+                    enabled: metaObj.capabilities.smartCollectionCondition.enabled
+                  },
+                  uniqueValues: {
+                    enabled: metaObj.capabilities.uniqueValues.enabled
+                  }
+                },
+                pin: metaObj.pinnedPosition ? true : false,
+                // validations: metaObj.validations.map((mve: any) => ({name: mve.name, value: ""})),
+              }
+            };
+
+            console.log(ownerType, metaObj.validations)
+
+            const createResponse = await this.shopifyService.makeShopifyRequest(query2, var2create);
+            // console.log('createResponse', createResponse);
+            // console.log(`Errors creating ${metaObj.key}`, JSON.stringify(createResponse?.data?.metafieldDefinitionCreate?.userErrors ?? createResponse?.errors));
+
+            if (createResponse?.data?.metafieldDefinitionCreate?.userErrors.length === 0) {
+              console.log(`✅ Metafield ${metaObj.key} created successfully.`);
+              results.push({ownerType, key: metaObj.key, msg: `✅ Metafield ${metaObj.key} created successfully.`});
+            } else {
+              console.error(`❌ Error creating metafield ${metaObj.key}:`, JSON.stringify(createResponse?.data?.metafieldDefinitionCreate?.userErrors ?? createResponse?.errors));
+              results.push({ownerType, key: metaObj.key, msg: `❌ Error creating metafield ${metaObj.key}:` + JSON.stringify(createResponse?.data?.metafieldDefinitionCreate?.userErrors ?? createResponse?.errors)});
+            }
+          }
+
+        }
+
+
+      }
+
+
+
+
+      return {message: `ℹ️ Migration report.`, results: results};
+    } catch (error) {
+      console.error('🔥 Error processing:', error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * Endpoint para recibir el webhook y gestionar colecciones de productos
+   */
   @post('/general/product-count/{merchant_id}')
   @response(200, {
     description: 'Set Product Student Count',
