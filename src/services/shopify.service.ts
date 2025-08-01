@@ -298,7 +298,7 @@ export class ShopifyService {
       };
 
 
-      console.log('Shopify Product Metafields', JSON.stringify(productInput.metafields, null, 2));
+      // console.log('Shopify Product Metafields', JSON.stringify(productInput.metafields, null, 2));
 
 
 
